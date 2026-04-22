@@ -48,7 +48,7 @@
   "devDependencies": {
     "@babel/core": "^7.24.0",
     "@types/react": "~19.1.0",
-    "typescript": "~5.3.3"
+    "typescript": "~5.9.2"
   },
   "overrides": {
     "@xmldom/xmldom": "^0.9.10",
