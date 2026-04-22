@@ -63,9 +63,7 @@
       }
     },
     "owner": "rtolpin",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/08689af9-b6cb-4966-800d-3acbb792032c"
     },
