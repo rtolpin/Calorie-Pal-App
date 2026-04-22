@@ -60,8 +60,12 @@
     },
     "extra": {
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
+        "projectId": "08689af9-b6cb-4966-800d-3acbb792032c"
+      },
+      "router": {
+        "origin": false
       }
-    }
+    },
+    "owner": "rtolpin"
   }
 }
