@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -50,10 +50,12 @@ export default function JournalScreen() {
 
   const isLoading = foodLoading || exerciseLoading;
 
-  useEffect(() => {
-    fetchLogs(session?.user.id, isGuest);
-    fetchExerciseLogs(session?.user.id, isGuest);
-  }, [session?.user.id, isGuest]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchLogs(session?.user.id, isGuest);
+      fetchExerciseLogs(session?.user.id, isGuest);
+    }, [session?.user.id, isGuest])
+  );
 
   const filterByDate = <T extends { logged_at: string }>(items: T[]): T[] => {
     const now = new Date();
@@ -158,19 +160,24 @@ export default function JournalScreen() {
         </View>
 
         {/* Date filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {FILTERS.map((f) => (
+        <View style={styles.segmentedControl}>
+          {FILTERS.map((f, i) => (
             <TouchableOpacity
               key={f.key}
-              style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
+              style={[
+                styles.segment,
+                filter === f.key && styles.segmentActive,
+                i === 0 && styles.segmentFirst,
+                i === FILTERS.length - 1 && styles.segmentLast,
+              ]}
               onPress={() => setFilter(f.key)}
             >
-              <Text style={[styles.filterText, filter === f.key && styles.filterTextActive]}>
+              <Text style={[styles.segmentText, filter === f.key && styles.segmentTextActive]}>
                 {f.label}
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
 
         {/* Type filter */}
         <View style={styles.typeFilterRow}>
@@ -305,19 +312,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
   },
-  filterScroll: { marginBottom: 10 },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  segmentedControl: {
+    flexDirection: 'row',
     backgroundColor: Colors.surface,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: Colors.border,
-    marginRight: 8,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
-  filterChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  filterText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
-  filterTextActive: { color: Colors.textWhite },
+  segment: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+  },
+  segmentFirst: { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+  segmentLast: { borderRightWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10 },
+  segmentActive: { backgroundColor: Colors.primary },
+  segmentText: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.textLight },
+  segmentTextActive: { color: Colors.textWhite },
   typeFilterRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   typeChip: {
     flexDirection: 'row',

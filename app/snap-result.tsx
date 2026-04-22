@@ -136,29 +136,34 @@ export default function SnapResultScreen() {
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    try {
-      let photoUrl: string | undefined;
-
-      if (capturedPhotoUri && !isGuest && session) {
+    // Photo upload is best-effort — a failure here must not block meal saving
+    let photoUrl: string | undefined;
+    if (capturedPhotoUri && !isGuest && session && capturedPhotoBase64) {
+      try {
         const logId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const fileName = `${session.user.id}/${logId}.jpg`;
 
-        const response = await fetch(capturedPhotoUri);
-        const blob = await response.blob();
-        const arrayBuffer = await blob.arrayBuffer();
+        // Convert base64 to binary for upload (avoids fetch+blob issues on some platforms)
+        const binary = atob(capturedPhotoBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
         const { error: uploadError } = await supabase.storage
           .from('meal-photos')
-          .upload(fileName, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
+          .upload(fileName, bytes.buffer, { contentType: 'image/jpeg', upsert: false });
 
         if (!uploadError) {
           const { data } = supabase.storage.from('meal-photos').getPublicUrl(fileName);
           photoUrl = data.publicUrl;
         }
-      } else if (capturedPhotoUri && isGuest) {
-        photoUrl = capturedPhotoUri;
+      } catch {
+        // Photo upload failed — meal still saves without a photo
       }
+    } else if (capturedPhotoUri && isGuest) {
+      photoUrl = capturedPhotoUri;
+    }
 
+    try {
       await addLog(
         {
           user_id: session?.user.id,
@@ -185,7 +190,7 @@ export default function SnapResultScreen() {
         { text: 'Great!', onPress: () => router.replace('/(tabs)/') },
       ]);
     } catch (e: any) {
-      Alert.alert('Error', 'Failed to save your meal. Please try again.');
+      Alert.alert('Error', e.message || 'Failed to save your meal. Please try again.');
     } finally {
       setSaving(false);
     }

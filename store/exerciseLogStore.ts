@@ -67,14 +67,33 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
 
     if (!userId) return;
 
+    // Optimistic update so the journal shows it immediately
+    set((state) => ({ exerciseLogs: [fullLog, ...state.exerciseLogs] }));
+
     const { data, error } = await supabase
       .from('exercise_logs')
-      .insert({ ...log, user_id: userId })
+      .insert({
+        user_id: userId,
+        exercise_name: log.exercise_name,
+        exercise_emoji: log.exercise_emoji,
+        duration_minutes: log.duration_minutes,
+        calories_burned: log.calories_burned,
+        notes: log.notes,
+        logged_at: log.logged_at || now,
+      })
       .select()
       .single();
 
-    if (error) throw error;
-    set((state) => ({ exerciseLogs: [data as ExerciseLog, ...state.exerciseLogs] }));
+    if (error) {
+      // Roll back optimistic update on failure
+      set((state) => ({ exerciseLogs: state.exerciseLogs.filter((l) => l.id !== id) }));
+      throw error;
+    }
+
+    // Replace optimistic entry with the real one from Supabase
+    set((state) => ({
+      exerciseLogs: state.exerciseLogs.map((l) => (l.id === id ? (data as ExerciseLog) : l)),
+    }));
   },
 
   updateExerciseLog: async (id, updates, userId, isGuest) => {

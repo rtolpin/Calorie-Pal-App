@@ -63,6 +63,8 @@ export default function ProfileScreen() {
   const { session, profile, isGuest, updateProfile, signOut } = useAuthStore();
   const { logs, clearLogs } = useFoodLogStore();
 
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('lbs');
+  const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('ft');
   const [calorieGoal, setCalorieGoal] = useState(String(profile?.daily_calorie_target || 2000));
   const [proteinPct, setProteinPct] = useState(profile?.protein_target_pct || 30);
   const [carbsPct, setCarbsPct] = useState(profile?.carbs_target_pct || 40);
@@ -208,8 +210,27 @@ export default function ProfileScreen() {
               {[
                 { label: 'Goal', value: GOAL_LABELS[profile.goal || 'maintain'] },
                 { label: 'Activity', value: ACTIVITY_LABELS[profile.activity_level || 'lightly_active'] },
-                { label: 'Weight', value: profile.weight_kg ? `${profile.weight_kg} kg` : '—' },
-                { label: 'Height', value: profile.height_cm ? `${profile.height_cm} cm` : '—' },
+                {
+                  label: 'Weight',
+                  value: profile.weight_kg
+                    ? weightUnit === 'lbs'
+                      ? `${Math.round(profile.weight_kg * 2.20462)} lbs`
+                      : `${profile.weight_kg} kg`
+                    : '—',
+                },
+                {
+                  label: 'Height',
+                  value: profile.height_cm
+                    ? heightUnit === 'ft'
+                      ? (() => {
+                          const totalIn = profile.height_cm / 2.54;
+                          const ft = Math.floor(totalIn / 12);
+                          const inches = Math.round(totalIn % 12);
+                          return `${ft} ft ${inches} in`;
+                        })()
+                      : `${profile.height_cm} cm`
+                    : '—',
+                },
                 { label: 'Age', value: profile.age ? `${profile.age} yrs` : '—' },
               ].map((stat) => (
                 <View key={stat.label} style={styles.statItem}>
@@ -218,6 +239,46 @@ export default function ProfileScreen() {
                 </View>
               ))}
             </View>
+            {(profile.weight_kg || profile.height_cm) ? (
+              <View style={styles.unitTogglesRow}>
+                {profile.weight_kg ? (
+                  <View style={styles.weightUnitRow}>
+                    <Text style={styles.weightUnitLabel}>Weight:</Text>
+                    <View style={styles.unitToggle}>
+                      {(['lbs', 'kg'] as const).map((u) => (
+                        <TouchableOpacity
+                          key={u}
+                          style={[styles.unitBtn, weightUnit === u && styles.unitBtnActive]}
+                          onPress={() => setWeightUnit(u)}
+                        >
+                          <Text style={[styles.unitBtnText, weightUnit === u && styles.unitBtnTextActive]}>
+                            {u}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+                {profile.height_cm ? (
+                  <View style={styles.weightUnitRow}>
+                    <Text style={styles.weightUnitLabel}>Height:</Text>
+                    <View style={styles.unitToggle}>
+                      {(['ft', 'cm'] as const).map((u) => (
+                        <TouchableOpacity
+                          key={u}
+                          style={[styles.unitBtn, heightUnit === u && styles.unitBtnActive]}
+                          onPress={() => setHeightUnit(u)}
+                        >
+                          <Text style={[styles.unitBtnText, heightUnit === u && styles.unitBtnTextActive]}>
+                            {u}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
           </Animated.View>
         )}
 
@@ -505,4 +566,35 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
+  unitTogglesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  weightUnitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weightUnitLabel: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 13,
+    color: Colors.textLight,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  unitBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.surface,
+  },
+  unitBtnActive: { backgroundColor: Colors.primary },
+  unitBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
+  unitBtnTextActive: { color: Colors.textWhite },
 });

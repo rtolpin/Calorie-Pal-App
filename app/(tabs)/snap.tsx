@@ -29,29 +29,12 @@ export default function SnapScreen() {
   const cameraRef = useRef<any>(null);
   const [flash, setFlash] = useState<'on' | 'off'>('off');
   const { setCapturedPhoto } = useFoodLogStore();
-  const { isGuest, guestScanCount, incrementGuestScan } = useAuthStore();
+  const { isGuest } = useAuthStore();
 
   const shutterScale = useSharedValue(1);
   const shutterStyle = useAnimatedStyle(() => ({ transform: [{ scale: shutterScale.value }] }));
 
-  const checkGuestLimit = (label: string) => {
-    if (isGuest && guestScanCount >= 3) {
-      Alert.alert(
-        'Scan Limit Reached',
-        `Guest users can scan up to 3 meals. Create a free account for unlimited scans!`,
-        [
-          { text: 'Maybe Later', style: 'cancel' },
-          { text: 'Create Account', onPress: () => router.push('/(auth)/create-account') },
-        ]
-      );
-      return true;
-    }
-    return false;
-  };
-
   const handleCapture = async () => {
-    if (checkGuestLimit('capture')) return;
-
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     shutterScale.value = withSequence(
       withTiming(0.85, { duration: 80 }),
@@ -70,7 +53,6 @@ export default function SnapScreen() {
         return;
       }
 
-      if (isGuest) incrementGuestScan();
       setCapturedPhoto(photo.uri, photo.base64);
       router.push('/snap-result');
     } catch {
@@ -79,8 +61,6 @@ export default function SnapScreen() {
   };
 
   const handlePickImage = async () => {
-    if (checkGuestLimit('pick')) return;
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
@@ -95,7 +75,6 @@ export default function SnapScreen() {
         Alert.alert('Error', 'Could not load image data. Please try again.');
         return;
       }
-      if (isGuest) incrementGuestScan();
       setCapturedPhoto(asset.uri, asset.base64);
       router.push('/snap-result');
     }
@@ -111,11 +90,6 @@ export default function SnapScreen() {
           <Text style={styles.webSubtitle}>
             Upload a photo of your meal and CaloriePal will analyze its nutritional content.
           </Text>
-          {isGuest && (
-            <View style={styles.scanBadgeWeb}>
-              <Text style={styles.scanBadgeText}>{3 - guestScanCount} free scans remaining</Text>
-            </View>
-          )}
           <TouchableOpacity style={styles.webUploadBtn} onPress={handlePickImage}>
             <Ionicons name="cloud-upload-outline" size={28} color={Colors.textWhite} />
             <Text style={styles.webUploadText}>Upload Photo</Text>
@@ -182,13 +156,6 @@ export default function SnapScreen() {
           <Text style={styles.frameHint}>Position your meal in the frame</Text>
         </View>
 
-        {isGuest && (
-          <View style={styles.scanBadge}>
-            <Text style={styles.scanBadgeText}>
-              {3 - guestScanCount} free scans remaining
-            </Text>
-          </View>
-        )}
 
         <View style={styles.bottomBar}>
           <TouchableOpacity style={styles.galleryBtn} onPress={handlePickImage}>

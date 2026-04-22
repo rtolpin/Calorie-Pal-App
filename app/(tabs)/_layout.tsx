@@ -19,7 +19,7 @@ function TabIcon({
         size={focused ? 26 : 22}
         color={focused ? Colors.primary : Colors.textMuted}
       />
-      <Text style={[styles.label, focused && styles.labelActive]}>{label}</Text>
+      <Text style={[styles.label, focused && styles.labelActive]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -100,11 +100,12 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     paddingTop: 8,
   },
-  iconContainer: { alignItems: 'center', gap: 3 },
+  iconContainer: { alignItems: 'center', gap: 3, width: 60 },
   label: {
     fontFamily: 'Nunito_400Regular',
     fontSize: 10,
     color: Colors.textMuted,
+    textAlign: 'center',
   },
   labelActive: {
     color: Colors.primary,

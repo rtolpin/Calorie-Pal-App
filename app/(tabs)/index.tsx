@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PieChart } from 'react-native-gifted-charts';
 import { Ionicons } from '@expo/vector-icons';
@@ -95,10 +95,12 @@ export default function HomeScreen() {
     .sort((a, b) => new Date(b.data.logged_at).getTime() - new Date(a.data.logged_at).getTime())
     .slice(0, 3);
 
-  useEffect(() => {
-    fetchLogs(session?.user.id, isGuest);
-    fetchExerciseLogs(session?.user.id, isGuest);
-  }, [session?.user.id, isGuest]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchLogs(session?.user.id, isGuest);
+      fetchExerciseLogs(session?.user.id, isGuest);
+    }, [session?.user.id, isGuest])
+  );
 
   useEffect(() => {
     if (isGuest) {
@@ -176,7 +178,34 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.calorieCard}>
+        {/* Action buttons */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.snapFAB}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/(tabs)/snap');
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fabEmoji}>📷</Text>
+            <Text style={styles.fabText}>Snap a Meal</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.exerciseFAB}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/log-exercise');
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fabEmoji}>🏃</Text>
+            <Text style={styles.fabText}>Log Exercise</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.calorieCard}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.sectionTitle}>Today's Progress</Text>
             <TouchableOpacity onPress={handleOpenGoalEdit} style={styles.editGoalBtn}>
@@ -276,33 +305,6 @@ export default function HomeScreen() {
             fat={totalFat}
             fiber={totalFiber}
           />
-        </Animated.View>
-
-        {/* Action buttons */}
-        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.snapFAB}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              router.push('/(tabs)/snap');
-            }}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.fabEmoji}>📷</Text>
-            <Text style={styles.fabText}>Snap a Meal</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.exerciseFAB}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              router.push('/log-exercise');
-            }}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.fabEmoji}>🏃</Text>
-            <Text style={styles.fabText}>Log Exercise</Text>
-          </TouchableOpacity>
         </Animated.View>
 
         {recentEntries.length > 0 && (

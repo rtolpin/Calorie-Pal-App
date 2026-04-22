@@ -70,14 +70,41 @@ export const useFoodLogStore = create<FoodLogState>((set, get) => ({
 
     if (!userId) return;
 
+    // Optimistic update so the journal shows it immediately
+    set((state) => ({ logs: [fullLog, ...state.logs] }));
+
     const { data, error } = await supabase
       .from('food_logs')
-      .insert({ ...log, user_id: userId })
+      .insert({
+        user_id: userId,
+        meal_name: log.meal_name,
+        photo_url: log.photo_url,
+        foods_detected: log.foods_detected,
+        calories: log.calories,
+        protein_g: log.protein_g,
+        carbs_g: log.carbs_g,
+        fat_g: log.fat_g,
+        fiber_g: log.fiber_g,
+        sugar_g: log.sugar_g,
+        sodium_mg: log.sodium_mg,
+        cholesterol_mg: log.cholesterol_mg,
+        saturated_fat_g: log.saturated_fat_g,
+        notes: log.notes,
+        logged_at: log.logged_at,
+      })
       .select()
       .single();
 
-    if (error) throw error;
-    set((state) => ({ logs: [data as FoodLog, ...state.logs] }));
+    if (error) {
+      // Roll back optimistic update on failure
+      set((state) => ({ logs: state.logs.filter((l) => l.id !== id) }));
+      throw error;
+    }
+
+    // Replace optimistic entry with the real one from Supabase
+    set((state) => ({
+      logs: state.logs.map((l) => (l.id === id ? (data as FoodLog) : l)),
+    }));
   },
 
   updateLog: async (id, updates, userId, isGuest) => {

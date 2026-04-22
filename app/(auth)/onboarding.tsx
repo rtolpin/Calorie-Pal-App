@@ -4,6 +4,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -36,8 +37,12 @@ export default function OnboardingScreen() {
   const { session, setProfile } = useAuthStore();
   const [step, setStep] = useState(0);
   const [age, setAge] = useState('');
-  const [weightKg, setWeightKg] = useState('');
+  const [weightInput, setWeightInput] = useState('');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('lbs');
+  const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('ft');
   const [heightCm, setHeightCm] = useState('');
+  const [heightFt, setHeightFt] = useState('');
+  const [heightIn, setHeightIn] = useState('');
   const [goal, setGoal] = useState<Goal>('maintain');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('lightly_active');
   const [customCalories, setCustomCalories] = useState('');
@@ -47,9 +52,21 @@ export default function OnboardingScreen() {
   const currentStep = steps[step];
   const progress = (step + 1) / steps.length;
 
+  const weightInKg = (): number => {
+    const val = parseFloat(weightInput) || 0;
+    return weightUnit === 'lbs' ? val * 0.453592 : val;
+  };
+
+  const heightInCm = (): number => {
+    if (heightUnit === 'cm') return parseFloat(heightCm) || 0;
+    const ft = parseFloat(heightFt) || 0;
+    const inches = parseFloat(heightIn) || 0;
+    return (ft * 12 + inches) * 2.54;
+  };
+
   const getRecommendedCalories = (): number => {
-    const w = parseFloat(weightKg) || 70;
-    const h = parseFloat(heightCm) || 170;
+    const w = weightInKg() || 70;
+    const h = heightInCm() || 170;
     const a = parseInt(age) || 30;
     return calculateDailyCalorieTarget(w, h, a, activityLevel, goal);
   };
@@ -63,8 +80,8 @@ export default function OnboardingScreen() {
         id: session?.user.id,
         name: name || 'User',
         age: parseInt(age) || null,
-        weight_kg: parseFloat(weightKg) || null,
-        height_cm: parseFloat(heightCm) || null,
+        weight_kg: weightInKg() || null,
+        height_cm: heightInCm() || null,
         goal,
         activity_level: activityLevel,
         daily_calorie_target: dailyCalories,
@@ -156,8 +173,84 @@ export default function OnboardingScreen() {
               This helps calculate your personalized calorie targets (optional)
             </Text>
             <Input label="Age" value={age} onChangeText={setAge} placeholder="e.g. 28" keyboardType="numeric" />
-            <Input label="Weight (kg)" value={weightKg} onChangeText={setWeightKg} placeholder="e.g. 70" keyboardType="numeric" />
-            <Input label="Height (cm)" value={heightCm} onChangeText={setHeightCm} placeholder="e.g. 170" keyboardType="numeric" />
+            <View style={styles.weightRow}>
+              <View style={{ flex: 1 }}>
+                <Input
+                  label={`Weight (${weightUnit})`}
+                  value={weightInput}
+                  onChangeText={setWeightInput}
+                  placeholder={weightUnit === 'lbs' ? 'e.g. 154' : 'e.g. 70'}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.unitToggle}>
+                {(['lbs', 'kg'] as const).map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitBtn, weightUnit === u && styles.unitBtnActive]}
+                    onPress={() => setWeightUnit(u)}
+                  >
+                    <Text style={[styles.unitBtnText, weightUnit === u && styles.unitBtnTextActive]}>
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.weightRow}>
+              <View style={{ flex: 1 }}>
+                {heightUnit === 'cm' ? (
+                  <Input
+                    label="Height (cm)"
+                    value={heightCm}
+                    onChangeText={setHeightCm}
+                    placeholder="e.g. 170"
+                    keyboardType="numeric"
+                  />
+                ) : (
+                  <View>
+                    <Text style={styles.inputLabel}>Height</Text>
+                    <View style={styles.ftInRow}>
+                      <View style={styles.ftField}>
+                        <TextInput
+                          style={styles.ftInput}
+                          value={heightFt}
+                          onChangeText={setHeightFt}
+                          placeholder="5"
+                          keyboardType="numeric"
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                        <Text style={styles.ftUnit}>ft</Text>
+                      </View>
+                      <View style={styles.ftField}>
+                        <TextInput
+                          style={styles.ftInput}
+                          value={heightIn}
+                          onChangeText={setHeightIn}
+                          placeholder="6"
+                          keyboardType="numeric"
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                        <Text style={styles.ftUnit}>in</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+              <View style={styles.unitToggle}>
+                {(['ft', 'cm'] as const).map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitBtn, heightUnit === u && styles.unitBtnActive]}
+                    onPress={() => setHeightUnit(u)}
+                  >
+                    <Text style={[styles.unitBtnText, heightUnit === u && styles.unitBtnTextActive]}>
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </Animated.View>
         )}
 
@@ -204,14 +297,14 @@ export default function OnboardingScreen() {
 
         <View style={styles.navButtons}>
           {step > 0 && (
-            <Button title="Back" variant="outline" onPress={() => setStep(step - 1)} style={styles.navBtn} />
+            <Button title="Back" variant="outline" onPress={() => setStep(step - 1)} style={styles.backBtn} />
           )}
           {step < steps.length - 1 ? (
             <Button
               title="Continue"
               gradient
               onPress={() => setStep(step + 1)}
-              style={[styles.navBtn, step === 0 && { flex: 1 }]}
+              style={styles.navBtn}
             />
           ) : (
             <Button
@@ -338,8 +431,56 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
+  inputLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  ftInRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  ftField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: Colors.surface,
+  },
+  ftInput: {
+    flex: 1,
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 15,
+    color: Colors.text,
+  },
+  ftUnit: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.textLight,
+  },
+  weightRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  unitToggle: {
+    flexDirection: 'column',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  unitBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  unitBtnActive: { backgroundColor: Colors.primary },
+  unitBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
+  unitBtnTextActive: { color: Colors.textWhite },
   navButtons: { flexDirection: 'row', gap: 12, marginTop: 32, marginBottom: 16 },
   navBtn: { flex: 1 },
+  backBtn: { paddingHorizontal: 8 },
   skip: {
     fontFamily: 'Nunito_400Regular',
     fontSize: 14,

@@ -1,4 +1,31 @@
 import React, { useEffect, useState } from 'react';
+
+function formatDateInput(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${m}/${d}/${date.getFullYear()}`;
+}
+
+function formatTimeInput(date: Date): string {
+  let h = date.getHours();
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function parseToISO(dateStr: string, timeStr: string): string {
+  const [m, d, y] = dateStr.split('/').map(Number);
+  const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+  if (!match) return new Date().toISOString();
+  let h = parseInt(match[1]);
+  const min = parseInt(match[2]);
+  const ampm = match[3]?.toUpperCase();
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  const result = new Date(y, m - 1, d, h, min);
+  return isNaN(result.getTime()) ? new Date().toISOString() : result.toISOString();
+}
 import {
   Alert,
   Image,
@@ -43,9 +70,9 @@ export default function EditEntryScreen() {
   const [mealName, setMealName] = useState(log?.meal_name || '');
   const [notes, setNotes] = useState(log?.notes || '');
   const [photoUri, setPhotoUri] = useState(log?.photo_url || '');
-  const [loggedAt, setLoggedAt] = useState(
-    log ? new Date(log.logged_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
-  );
+  const initialDate = log ? new Date(log.logged_at) : new Date();
+  const [dateInput, setDateInput] = useState(formatDateInput(initialDate));
+  const [timeInput, setTimeInput] = useState(formatTimeInput(initialDate));
   const [values, setValues] = useState<Record<string, string>>({
     calories: String(log?.calories || 0),
     protein_g: String(log?.protein_g || 0),
@@ -107,7 +134,7 @@ export default function EditEntryScreen() {
           cholesterol_mg: parseFloat(values.cholesterol_mg) || 0,
           saturated_fat_g: parseFloat(values.saturated_fat_g) || 0,
           notes: notes.trim() || undefined,
-          logged_at: new Date(loggedAt).toISOString(),
+          logged_at: parseToISO(dateInput, timeInput),
           photo_url: photoUri || undefined,
         },
         session?.user.id,
@@ -174,13 +201,29 @@ export default function EditEntryScreen() {
             />
 
             <Text style={styles.fieldLabel}>Date & Time</Text>
-            <TextInput
-              style={styles.textInput}
-              value={loggedAt}
-              onChangeText={(v) => { setLoggedAt(v); setHasChanges(true); }}
-              placeholder="YYYY-MM-DDTHH:MM"
-              placeholderTextColor={Colors.textMuted}
-            />
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateTimeField}>
+                <Ionicons name="calendar-outline" size={15} color={Colors.textLight} style={styles.dateTimeIcon} />
+                <TextInput
+                  style={styles.dateTimeInput}
+                  value={dateInput}
+                  onChangeText={(v) => { setDateInput(v); setHasChanges(true); }}
+                  placeholder="MM/DD/YYYY"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              <View style={styles.dateTimeField}>
+                <Ionicons name="time-outline" size={15} color={Colors.textLight} style={styles.dateTimeIcon} />
+                <TextInput
+                  style={styles.dateTimeInput}
+                  value={timeInput}
+                  onChangeText={(v) => { setTimeInput(v); setHasChanges(true); }}
+                  placeholder="12:00 PM"
+                  placeholderTextColor={Colors.textMuted}
+                />
+              </View>
+            </View>
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.card}>
@@ -367,4 +410,26 @@ const styles = StyleSheet.create({
     minHeight: 80,
   },
   buttons: { gap: 10, marginTop: 8 },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  dateTimeField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  dateTimeIcon: { marginRight: 6 },
+  dateTimeInput: {
+    flex: 1,
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 14,
+    color: Colors.text,
+  },
 });

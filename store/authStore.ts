@@ -9,8 +9,6 @@ interface AuthState {
   isGuest: boolean;
   isLoading: boolean;
   initialized: boolean;
-  guestScanCount: number;
-
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -18,7 +16,6 @@ interface AuthState {
   continueAsGuest: () => void;
   setProfile: (profile: UserProfile) => void;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
-  incrementGuestScan: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -27,8 +24,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isGuest: false,
   isLoading: true,
   initialized: false,
-  guestScanCount: 0,
-
   initialize: async () => {
     try {
       const { data } = await supabase.auth.getSession();
@@ -77,9 +72,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signUp: async (email, password) => {
     set({ isLoading: true });
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) {
+      set({ isLoading: false });
+      throw signUpError;
+    }
+    // Immediately sign in — works when email confirmation is disabled in Supabase.
+    // If confirmation is required, this throws so the UI can prompt the user to check email.
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     set({ isLoading: false });
-    if (error) throw error;
+    if (signInError) throw signInError;
   },
 
   signOut: async () => {
@@ -108,7 +110,4 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }));
   },
 
-  incrementGuestScan: () => {
-    set((state) => ({ guestScanCount: state.guestScanCount + 1 }));
-  },
 }));

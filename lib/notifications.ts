@@ -30,10 +30,10 @@ export async function scheduleDailyReminder(timeString: string): Promise<void> {
       body: "Don't forget to log your meals today!",
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: hours,
       minute: minutes,
-      repeats: true,
-    } as Notifications.DailyTriggerInput,
+    },
   });
 }
 

@@ -15,8 +15,8 @@ export const Colors = {
   // Macros (consistent throughout app)
   protein: '#4A90E2',
   carbs: '#FF6B35',
-  fat: '#FFE66D',
-  fiber: '#A8E6CF',
+  fat: '#E6A817',
+  fiber: '#27AE60',
   sugar: '#FF8B94',
   sodium: '#B2BEC3',
 

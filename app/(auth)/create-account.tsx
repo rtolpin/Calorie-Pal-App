@@ -49,7 +49,15 @@ export default function CreateAccountScreen() {
         params: { name: name.trim() },
       });
     } catch (e: any) {
-      Alert.alert('Sign Up Failed', e.message || 'Something went wrong. Please try again.');
+      if (e.message?.toLowerCase().includes('not confirmed') || e.message?.toLowerCase().includes('email not confirmed')) {
+        Alert.alert(
+          'Check Your Email',
+          'Your account was created! Click the confirmation link we sent to your email, then come back and sign in.',
+          [{ text: 'Go to Sign In', onPress: () => router.replace('/(auth)/sign-in') }]
+        );
+      } else {
+        Alert.alert('Sign Up Failed', e.message || 'Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
