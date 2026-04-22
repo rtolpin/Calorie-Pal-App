@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../lib/haptics';
 import { useAuthStore } from '../store/authStore';
 import { useExerciseLogStore } from '../store/exerciseLogStore';
 import { EXERCISE_PRESETS } from '../types';

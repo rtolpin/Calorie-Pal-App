@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../lib/haptics';
 import { useAuthStore } from '../store/authStore';
 import { useFoodLogStore } from '../store/foodLogStore';
 import { analyzeMealPhoto } from '../lib/openai';
