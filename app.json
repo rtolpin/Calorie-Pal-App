@@ -23,7 +23,8 @@
         "NSCameraUsageDescription": "CaloriePal needs camera access to snap and analyze your meals",
         "NSPhotoLibraryUsageDescription": "CaloriePal needs photo access to upload meal photos",
         "NSPhotoLibraryAddUsageDescription": "CaloriePal needs photo access to save meal photos",
-        "NSUserNotificationUsageDescription": "CaloriePal sends friendly reminders to log your meals"
+        "NSUserNotificationUsageDescription": "CaloriePal sends friendly reminders to log your meals",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -48,12 +49,7 @@
           "sounds": []
         }
       ],
-      [
-        "expo-font",
-        {
-          "fonts": []
-        }
-      ]
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
@@ -66,6 +62,18 @@
         "origin": false
       }
     },
-    "owner": "rtolpin"
+    "owner": "rtolpin",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/08689af9-b6cb-4966-800d-3acbb792032c"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    }
   }
 }
