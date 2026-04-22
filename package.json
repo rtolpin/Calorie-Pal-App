@@ -51,7 +51,7 @@
     "typescript": "~5.9.2"
   },
   "overrides": {
-    "@xmldom/xmldom": "^0.9.10",
+    "@xmldom/xmldom": "^0.8.10",
     "send": "^0.19.2",
     "tar": "^7.5.13"
   },
