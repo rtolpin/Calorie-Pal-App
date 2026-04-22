@@ -1,14 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PieChart } from 'react-native-gifted-charts';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from '../../lib/haptics';
 import { useAuthStore } from '../../store/authStore';
@@ -23,6 +27,7 @@ import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { MacroRow } from '../../components/ui/MacroBadge';
 import { Colors } from '../../constants/Colors';
 import { FoodLog, ExerciseLog } from '../../types';
+import { getGuestProfile, saveGuestProfile } from '../../lib/asyncStorage';
 
 const MOTIVATIONAL_TIPS = [
   '💧 Staying hydrated can reduce hunger — aim for 8 glasses today!',
@@ -50,10 +55,15 @@ type JournalEntry =
   | { type: 'exercise'; data: ExerciseLog };
 
 export default function HomeScreen() {
-  const { session, profile, isGuest } = useAuthStore();
+  const { session, profile, isGuest, updateProfile } = useAuthStore();
   const { logs, isLoading: logsLoading, fetchLogs, deleteLog } = useFoodLogStore();
   const { exerciseLogs, isLoading: exerciseLoading, fetchExerciseLogs, deleteExerciseLog } = useExerciseLogStore();
   const { isOnline } = useNetworkStatus();
+
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalInput, setGoalInput] = useState('');
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [guestCalorieGoal, setGuestCalorieGoal] = useState<number | null>(null);
 
   const tip = MOTIVATIONAL_TIPS[new Date().getDay() % MOTIVATIONAL_TIPS.length];
   const todayStr = getTodayString();
@@ -72,7 +82,9 @@ export default function HomeScreen() {
   const totalFat = todayFoodLogs.reduce((s, l) => s + l.fat_g, 0);
   const totalFiber = todayFoodLogs.reduce((s, l) => s + l.fiber_g, 0);
 
-  const calorieGoal = profile?.daily_calorie_target || 2000;
+  const calorieGoal = isGuest
+    ? (guestCalorieGoal ?? 2000)
+    : (profile?.daily_calorie_target ?? 2000);
   const remaining = Math.max(0, calorieGoal - netCalories);
 
   // Combine and sort recent entries by logged_at desc for the feed
@@ -87,6 +99,41 @@ export default function HomeScreen() {
     fetchLogs(session?.user.id, isGuest);
     fetchExerciseLogs(session?.user.id, isGuest);
   }, [session?.user.id, isGuest]);
+
+  useEffect(() => {
+    if (isGuest) {
+      getGuestProfile().then((p) => {
+        if (p?.daily_calorie_target) setGuestCalorieGoal(p.daily_calorie_target);
+      });
+    }
+  }, [isGuest]);
+
+  const handleOpenGoalEdit = () => {
+    setGoalInput(String(calorieGoal));
+    setEditingGoal(true);
+  };
+
+  const handleSaveGoal = async () => {
+    const val = parseInt(goalInput, 10);
+    if (!val || val < 500 || val > 10000) {
+      Alert.alert('Invalid Goal', 'Please enter a calorie goal between 500 and 10,000.');
+      return;
+    }
+    setSavingGoal(true);
+    try {
+      if (isGuest) {
+        await saveGuestProfile({ daily_calorie_target: val });
+        setGuestCalorieGoal(val);
+      } else {
+        await updateProfile({ daily_calorie_target: val });
+      }
+      setEditingGoal(false);
+    } catch {
+      Alert.alert('Error', 'Failed to save goal. Please try again.');
+    } finally {
+      setSavingGoal(false);
+    }
+  };
 
   const donutData = [
     { value: Math.min(netCalories, calorieGoal), color: Colors.primary },
@@ -130,7 +177,49 @@ export default function HomeScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.calorieCard}>
-          <Text style={styles.sectionTitle}>Today's Progress</Text>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.sectionTitle}>Today's Progress</Text>
+            <TouchableOpacity onPress={handleOpenGoalEdit} style={styles.editGoalBtn}>
+              <Ionicons name="pencil-outline" size={16} color={Colors.primary} />
+              <Text style={styles.editGoalText}>Set Goal</Text>
+            </TouchableOpacity>
+          </View>
+
+          {editingGoal && (
+            <View style={styles.goalEditCard}>
+              <Text style={styles.goalEditLabel}>Daily Calorie Goal</Text>
+              <View style={styles.goalEditInputRow}>
+                <TextInput
+                  style={styles.goalEditInput}
+                  value={goalInput}
+                  onChangeText={setGoalInput}
+                  keyboardType="numeric"
+                  autoFocus
+                  selectTextOnFocus
+                  placeholderTextColor={Colors.textMuted}
+                />
+                <Text style={styles.goalEditUnit}>cal</Text>
+              </View>
+              <View style={styles.goalEditActions}>
+                <TouchableOpacity
+                  style={styles.goalCancelBtn}
+                  onPress={() => setEditingGoal(false)}
+                >
+                  <Text style={styles.goalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.goalSaveBtn}
+                  onPress={handleSaveGoal}
+                  disabled={savingGoal}
+                >
+                  {savingGoal
+                    ? <ActivityIndicator size="small" color={Colors.textWhite} />
+                    : <Text style={styles.goalSaveText}>Save</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <View style={styles.chartContainer}>
             <PieChart
@@ -268,7 +357,93 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 3,
   },
-  sectionTitle: { fontFamily: 'Nunito_700Bold', fontSize: 18, color: Colors.text, marginBottom: 16 },
+  sectionTitle: { fontFamily: 'Nunito_700Bold', fontSize: 18, color: Colors.text },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  editGoalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  editGoalText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  goalEditCard: {
+    backgroundColor: Colors.background,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '44',
+  },
+  goalEditLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  goalEditInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  goalEditInput: {
+    flex: 1,
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 26,
+    color: Colors.primary,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '55',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    textAlign: 'center',
+  },
+  goalEditUnit: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.textLight,
+  },
+  goalEditActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  goalCancelBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  goalCancelText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  goalSaveBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  goalSaveText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textWhite,
+  },
   chartContainer: { alignItems: 'center', marginBottom: 16 },
   chartCenter: { alignItems: 'center' },
   chartCalories: { fontFamily: 'Nunito_800ExtraBold', fontSize: 28, color: Colors.text },
