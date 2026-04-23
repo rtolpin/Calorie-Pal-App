@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,6 +41,14 @@ function getTopFoods(logs: FoodLog[]): { food: string; count: number }[] {
     .slice(0, 5)
     .map(([food, count]) => ({ food, count }));
 }
+
+const CITATION_SOURCES = [
+  { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+  { label: 'NIH Office of Dietary Supplements', url: 'https://ods.od.nih.gov' },
+  { label: 'CDC Nutrition', url: 'https://www.cdc.gov/nutrition' },
+  { label: 'Academy of Nutrition and Dietetics', url: 'https://www.eatright.org' },
+  { label: 'Harvard T.H. Chan – The Nutrition Source', url: 'https://www.hsph.harvard.edu/nutritionsource' },
+];
 
 export default function InsightsScreen() {
   const { session, isGuest, profile } = useAuthStore();
@@ -315,6 +324,22 @@ export default function InsightsScreen() {
               Log some meals and workouts and we'll generate personalized suggestions! 🍽️🏃
             </Text>
           )}
+
+          {!isGuest && (
+            <View style={styles.citationsBox}>
+              <View style={styles.citationsDivider} />
+              <Text style={styles.citationsTitle}>ℹ️ Disclaimer</Text>
+              <Text style={styles.citationsText}>
+                AI suggestions are for informational purposes only and are not a substitute for professional medical or dietary advice. Consult a registered dietitian or qualified healthcare provider before making significant changes to your diet.
+              </Text>
+              <Text style={styles.citationsSubtitle}>Authoritative Nutrition Sources:</Text>
+              {CITATION_SOURCES.map(({ label, url }) => (
+                <TouchableOpacity key={url} onPress={() => Linking.openURL(url)}>
+                  <Text style={styles.citationLink}>• {label} ↗</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -387,4 +412,19 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.error, textAlign: 'center' },
   retryText: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.primary },
   noDataText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textLight, textAlign: 'center', paddingVertical: 12, lineHeight: 22 },
+  citationsBox: {
+    marginTop: 16,
+    padding: 14,
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+  },
+  citationsDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginBottom: 12,
+  },
+  citationsTitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight, marginBottom: 6 },
+  citationsText: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, lineHeight: 18, marginBottom: 10 },
+  citationsSubtitle: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.textLight, marginBottom: 4 },
+  citationLink: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.secondary, textDecorationLine: 'underline', lineHeight: 22 },
 });
