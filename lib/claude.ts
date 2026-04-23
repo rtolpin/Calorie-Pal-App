@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FoodLog, UserProfile } from '../types';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const SUGGESTIONS_CACHE_KEY = 'claude_suggestions_cache';
+const SUGGESTIONS_CACHE_KEY = 'claude_suggestions_cache_v2';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const SYSTEM_PROMPT = `You are CaloriePal, a friendly, encouraging, and expert nutritionist assistant. Analyze the user's food journal data and provide specific, actionable, and personalized nutrition suggestions. Be warm, positive, and non-judgmental. Use simple language. Tailor all advice to their stated goal. Use emoji to make responses feel friendly and approachable. Format your response with clear sections using bold headers and bullet points.

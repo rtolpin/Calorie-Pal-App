@@ -291,6 +291,21 @@ export default function InsightsScreen() {
             )}
           </View>
 
+          {!isGuest && (
+            <View style={styles.citationsBox}>
+              <Text style={styles.citationsTitle}>⚕️ Medical Disclaimer</Text>
+              <Text style={styles.citationsText}>
+                AI suggestions are for informational purposes only and are not a substitute for professional medical or dietary advice. Always consult a registered dietitian or qualified healthcare provider before making changes to your diet.
+              </Text>
+              <Text style={styles.citationsSubtitle}>Authoritative Nutrition Sources:</Text>
+              {CITATION_SOURCES.map(({ label, url }) => (
+                <TouchableOpacity key={url} onPress={() => Linking.openURL(url)} style={styles.citationRow}>
+                  <Text style={styles.citationLink}>↗ {label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {isGuest ? (
             <View style={styles.guestTeaser}>
               <Text style={styles.guestTeaserEmoji}>🔒</Text>
@@ -323,22 +338,6 @@ export default function InsightsScreen() {
             <Text style={styles.noDataText}>
               Log some meals and workouts and we'll generate personalized suggestions! 🍽️🏃
             </Text>
-          )}
-
-          {!isGuest && (
-            <View style={styles.citationsBox}>
-              <View style={styles.citationsDivider} />
-              <Text style={styles.citationsTitle}>ℹ️ Disclaimer</Text>
-              <Text style={styles.citationsText}>
-                AI suggestions are for informational purposes only and are not a substitute for professional medical or dietary advice. Consult a registered dietitian or qualified healthcare provider before making significant changes to your diet.
-              </Text>
-              <Text style={styles.citationsSubtitle}>Authoritative Nutrition Sources:</Text>
-              {CITATION_SOURCES.map(({ label, url }) => (
-                <TouchableOpacity key={url} onPress={() => Linking.openURL(url)}>
-                  <Text style={styles.citationLink}>• {label} ↗</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           )}
         </Animated.View>
       </ScrollView>
@@ -413,18 +412,16 @@ const styles = StyleSheet.create({
   retryText: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.primary },
   noDataText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textLight, textAlign: 'center', paddingVertical: 12, lineHeight: 22 },
   citationsBox: {
-    marginTop: 16,
-    padding: 14,
-    backgroundColor: Colors.background,
-    borderRadius: 12,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#EAF6FF',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#4ECDC4',
   },
-  citationsDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginBottom: 12,
-  },
-  citationsTitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight, marginBottom: 6 },
-  citationsText: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, lineHeight: 18, marginBottom: 10 },
-  citationsSubtitle: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.textLight, marginBottom: 4 },
-  citationLink: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.secondary, textDecorationLine: 'underline', lineHeight: 22 },
+  citationsTitle: { fontFamily: 'Nunito_800ExtraBold', fontSize: 15, color: Colors.text, marginBottom: 8 },
+  citationsText: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.text, lineHeight: 20, marginBottom: 12 },
+  citationsSubtitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text, marginBottom: 6 },
+  citationRow: { paddingVertical: 4 },
+  citationLink: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.secondary, textDecorationLine: 'underline', lineHeight: 22 },
 });
