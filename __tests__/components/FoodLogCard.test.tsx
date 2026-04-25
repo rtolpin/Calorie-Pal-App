@@ -4,8 +4,6 @@ import { render, fireEvent } from '@testing-library/react-native';
 import { FoodLogCard } from '../../components/FoodLogCard';
 import { FoodLog } from '../../types';
 
-// jest.mock is hoisted above imports, so the factory must not reference outer variables.
-// Retrieve the mock functions via jest.requireMock() inside tests instead.
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
 }));
@@ -37,6 +35,8 @@ function getRouterPush() {
   return jest.requireMock('expo-router').router.push as jest.Mock;
 }
 
+// ─── photo absent ─────────────────────────────────────────────────────────────
+
 describe('FoodLogCard — photo press: no photo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -59,6 +59,8 @@ describe('FoodLogCard — photo press: no photo', () => {
   });
 });
 
+// ─── edit-entry header ────────────────────────────────────────────────────────
+
 describe('FoodLogCard — top edit-entry header', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -76,7 +78,7 @@ describe('FoodLogCard — top edit-entry header', () => {
     });
   });
 
-  it('tapping the pencil icon navigates to the edit screen', () => {
+  it('tapping the Edit button in the action bar navigates to the edit screen', () => {
     const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     fireEvent.press(getByTestId('edit-btn'));
     expect(getRouterPush()).toHaveBeenCalledWith({
@@ -85,6 +87,47 @@ describe('FoodLogCard — top edit-entry header', () => {
     });
   });
 });
+
+// ─── action bar touch targets ─────────────────────────────────────────────────
+
+describe('FoodLogCard — action bar touch targets', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('Edit button is present in the action bar', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('edit-btn')).toBeTruthy();
+  });
+
+  it('Delete button is present in the action bar', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('delete-btn')).toBeTruthy();
+  });
+
+  it('Edit button has a minHeight of 48 (meets Apple HIG touch target)', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    const btn = getByTestId('edit-btn');
+    const { minHeight } = btn.props.style ?? {};
+    expect(minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  it('Delete button has a minHeight of 48 (meets Apple HIG touch target)', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    const btn = getByTestId('delete-btn');
+    const { minHeight } = btn.props.style ?? {};
+    expect(minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  it('Favorite button has a minHeight of 48 when rendered', () => {
+    const { getByTestId } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} />
+    );
+    const btn = getByTestId('favorite-btn');
+    const { minHeight } = btn.props.style ?? {};
+    expect(minHeight).toBeGreaterThanOrEqual(44);
+  });
+});
+
+// ─── photo with action sheet ──────────────────────────────────────────────────
 
 describe('FoodLogCard — photo press: with photo', () => {
   const LOG_WITH_PHOTO = { ...BASE_LOG, photo_url: 'https://example.com/photo.jpg' };
@@ -156,6 +199,8 @@ describe('FoodLogCard — photo press: with photo', () => {
   });
 });
 
+// ─── accessibility ────────────────────────────────────────────────────────────
+
 describe('FoodLogCard — accessibility', () => {
   it('food photo has an accessibilityLabel containing the meal name', () => {
     const log = { ...BASE_LOG, photo_url: 'https://example.com/photo.jpg' };
@@ -163,12 +208,32 @@ describe('FoodLogCard — accessibility', () => {
     expect(getByLabelText(`Photo of ${log.meal_name}`)).toBeTruthy();
   });
 
-  it('delete button is accessible', () => {
-    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
-    const btn = getByTestId('delete-btn');
-    expect(btn).toBeTruthy();
+  it('Edit button has an accessibilityLabel', () => {
+    const { getByLabelText } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByLabelText('Edit this entry')).toBeTruthy();
+  });
+
+  it('Delete button has an accessibilityLabel', () => {
+    const { getByLabelText } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByLabelText('Delete this entry')).toBeTruthy();
+  });
+
+  it('Favorite button has an accessibilityLabel when provided', () => {
+    const { getByLabelText } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} />
+    );
+    expect(getByLabelText('Add to favorites')).toBeTruthy();
+  });
+
+  it('Favorite button label changes to "Remove from favorites" when already favorited', () => {
+    const { getByLabelText } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite />
+    );
+    expect(getByLabelText('Remove from favorites')).toBeTruthy();
   });
 });
+
+// ─── favorite heart ───────────────────────────────────────────────────────────
 
 describe('FoodLogCard — favorite heart', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -193,7 +258,23 @@ describe('FoodLogCard — favorite heart', () => {
     fireEvent.press(getByTestId('favorite-btn'));
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it('shows "Saved" label text when isFavorite is true', () => {
+    const { getByText } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite />
+    );
+    expect(getByText('Saved')).toBeTruthy();
+  });
+
+  it('shows "Favorite" label text when isFavorite is false', () => {
+    const { getByText } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite={false} />
+    );
+    expect(getByText('Favorite')).toBeTruthy();
+  });
 });
+
+// ─── delete behaviour ─────────────────────────────────────────────────────────
 
 describe('FoodLogCard — delete behaviour', () => {
   beforeEach(() => {

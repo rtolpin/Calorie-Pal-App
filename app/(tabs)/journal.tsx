@@ -219,6 +219,9 @@ export default function JournalScreen() {
   const [favoriteExerciseNames, setFavoriteExerciseNames] = useState<Set<string>>(new Set());
   const [currentTemplate, setCurrentTemplate] = useState<DayTemplate | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
+  // Bumped on every focus to force wellness data (mood, water, notes) to reload
+  // from AsyncStorage — ensures mood set on the Home tab is immediately visible here.
+  const [wellnessRefreshKey, setWellnessRefreshKey] = useState(0);
 
   const isLoading = foodLoading || exerciseLoading;
 
@@ -230,6 +233,7 @@ export default function JournalScreen() {
       getFavoriteMealNames().then((names) => setFavoriteMealNames(new Set(names)));
       getFavoriteExerciseNames().then((names) => setFavoriteExerciseNames(new Set(names)));
       getDayTemplate().then(setCurrentTemplate);
+      setWellnessRefreshKey((k) => k + 1);
     }, [session?.user.id, isGuest])
   );
 
@@ -337,7 +341,7 @@ export default function JournalScreen() {
       setWellnessMap(map);
     });
     return () => { cancelled = true; };
-  }, [wellnessDates.join(','), waterGoalVal]);
+  }, [wellnessDates.join(','), waterGoalVal, wellnessRefreshKey]);
 
   const handleDeleteFood = (id: string) => deleteLog(id, session?.user.id, isGuest);
   const handleDeleteExercise = (id: string) => deleteExerciseLog(id, session?.user.id, isGuest);

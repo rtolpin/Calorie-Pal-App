@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
@@ -15,15 +16,20 @@ import { supabase } from '../lib/supabase';
 SplashScreen.preventAutoHideAsync();
 
 async function handleAuthDeepLink(url: string) {
-  // Supabase email confirmation links arrive as: caloriepal://#access_token=...&refresh_token=...
+  // Supabase auth links arrive as: caloriepal://[path]#access_token=...&type=...
   const fragment = url.split('#')[1];
   if (!fragment) return;
   const params = new URLSearchParams(fragment);
   const access_token = params.get('access_token');
   const refresh_token = params.get('refresh_token');
+  const type = params.get('type');
   if (access_token && refresh_token) {
     await supabase.auth.setSession({ access_token, refresh_token });
-    // onAuthStateChange in authStore picks up the new session automatically
+    if (type === 'recovery') {
+      // Password reset link — navigate to the set-new-password screen
+      router.replace('/(auth)/reset-password');
+    }
+    // For type === 'signup' (email confirmation), onAuthStateChange handles navigation
   }
 }
 

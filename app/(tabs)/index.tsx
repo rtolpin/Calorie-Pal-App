@@ -385,10 +385,23 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.waterCard}>
           <View style={styles.waterHeader}>
             <Text style={styles.waterTitle}>💧 Water Intake</Text>
-            {editingWaterGoal ? (
-              <View style={styles.waterGoalEditRow}>
+            <TouchableOpacity
+              onPress={() => { setEditingWaterGoal(true); setWaterGoalInput(String(waterGoal)); }}
+              style={styles.waterGoalBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Daily water goal: ${waterGoal} cups. Tap to edit.`}
+            >
+              <Text style={styles.waterGoal}>Goal: {waterGoal} cups</Text>
+              <Ionicons name="pencil-outline" size={13} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {editingWaterGoal && (
+            <View style={styles.waterGoalEditCard}>
+              <Text style={styles.waterGoalEditLabel}>Daily Water Goal</Text>
+              <View style={styles.waterGoalEditInputRow}>
                 <TextInput
-                  style={styles.waterGoalInput}
+                  style={styles.waterGoalEditInput}
                   value={waterGoalInput}
                   onChangeText={setWaterGoalInput}
                   keyboardType="number-pad"
@@ -397,25 +410,28 @@ export default function HomeScreen() {
                   maxLength={2}
                   accessibilityLabel="Water goal cups"
                 />
-                <Text style={styles.waterGoalInputLabel}>cups</Text>
-                <TouchableOpacity onPress={handleSaveWaterGoal} style={styles.waterGoalSaveBtn} accessibilityRole="button" accessibilityLabel="Save water goal">
-                  <Ionicons name="checkmark" size={16} color={Colors.textWhite} />
+                <Text style={styles.waterGoalEditUnit}>cups</Text>
+              </View>
+              <View style={styles.waterGoalEditActions}>
+                <TouchableOpacity
+                  style={styles.waterGoalCancelBtn}
+                  onPress={() => setEditingWaterGoal(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing water goal"
+                >
+                  <Text style={styles.waterGoalCancelText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEditingWaterGoal(false)} accessibilityLabel="Cancel">
-                  <Ionicons name="close" size={18} color={Colors.textLight} />
+                <TouchableOpacity
+                  style={styles.waterGoalSaveBtn}
+                  onPress={handleSaveWaterGoal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save water goal"
+                >
+                  <Text style={styles.waterGoalSaveText}>Save</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => { setEditingWaterGoal(true); setWaterGoalInput(String(waterGoal)); }}
-                style={styles.waterGoalBtn}
-                accessibilityLabel={`Daily water goal: ${waterGoal} cups. Tap to edit.`}
-              >
-                <Text style={styles.waterGoal}>Goal: {waterGoal} cups</Text>
-                <Ionicons name="pencil-outline" size={11} color={Colors.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
           <View style={styles.waterRow}>
             <TouchableOpacity
               style={styles.waterBtn}
@@ -704,23 +720,82 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   waterTitle: { fontFamily: 'Nunito_700Bold', fontSize: 16, color: Colors.text },
-  waterGoalBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  waterGoal: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
-  waterGoalEditRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  waterGoalInput: {
+  waterGoalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  waterGoal: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.primary },
+  waterGoalEditCard: {
+    backgroundColor: Colors.background,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#4FC3F7' + '66',
+  },
+  waterGoalEditLabel: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.text,
+    marginBottom: 8,
+  },
+  waterGoalEditInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  waterGoalEditInput: {
+    flex: 1,
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 32,
+    color: '#0288D1',
     borderWidth: 1.5,
     borderColor: '#4FC3F7',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    width: 40,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     textAlign: 'center',
   },
-  waterGoalInputLabel: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
-  waterGoalSaveBtn: { backgroundColor: '#4FC3F7', borderRadius: 8, padding: 4 },
+  waterGoalEditUnit: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 18,
+    color: Colors.textLight,
+  },
+  waterGoalEditActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  waterGoalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  waterGoalCancelText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  waterGoalSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#4FC3F7',
+    alignItems: 'center',
+  },
+  waterGoalSaveText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textWhite,
+  },
   waterCountDone: { color: '#4FC3F7' },
   waterDotsMore: {
     fontFamily: 'Nunito_700Bold',

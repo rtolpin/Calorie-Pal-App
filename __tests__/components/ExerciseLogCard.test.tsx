@@ -49,19 +49,44 @@ const BASE_LOG: ExerciseLog = {
 
 const LOG_WITH_PHOTO = { ...BASE_LOG, photo_url: 'https://example.com/run.jpg' };
 
-// ─── photo absent ─────────────────────────────────────────────────────────────
+// ─── photo absent — emoji tile ─────────────────────────────────────────────────
 
-describe('ExerciseLogCard — no photo', () => {
+describe('ExerciseLogCard — no photo: emoji tile', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('renders the emoji icon when no photo_url is set', () => {
+  it('renders the emoji when no photo_url is set', () => {
     const { queryByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     expect(queryByTestId('photo-container')).toBeNull();
   });
 
-  it('does not show the photo-container touchable', () => {
+  it('does not render a photo-container touchable when no photo', () => {
     const { queryByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     expect(queryByTestId('photo-container')).toBeNull();
+  });
+});
+
+// ─── photo present — display in journal view ──────────────────────────────────
+
+describe('ExerciseLogCard — photo present: displays in journal view', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renders a photo-container when photo_url is set', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
+    expect(getByTestId('photo-container')).toBeTruthy();
+  });
+
+  it('shows the photo image element (not the emoji tile) when photo_url is set', () => {
+    const { getByLabelText, queryByTestId } = render(
+      <ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />
+    );
+    expect(getByLabelText(`Photo of ${LOG_WITH_PHOTO.exercise_name}`)).toBeTruthy();
+    // emoji icon container should NOT render when photo is present
+    expect(queryByTestId('emoji-container')).toBeNull();
+  });
+
+  it('photo accessibilityLabel contains the exercise name', () => {
+    const { getByLabelText } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
+    expect(getByLabelText(`Photo of Running`)).toBeTruthy();
   });
 });
 
@@ -103,7 +128,7 @@ describe('ExerciseLogCard — photo present: action sheet', () => {
   });
 });
 
-// ─── photo present — replace flow ─────────────────────────────────────────────
+// ─── Replace Photo flow ────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — Replace Photo flow', () => {
   beforeEach(() => {
@@ -150,6 +175,33 @@ describe('ExerciseLogCard — Replace Photo flow', () => {
   });
 });
 
+// ─── action bar touch targets ─────────────────────────────────────────────────
+
+describe('ExerciseLogCard — action bar touch targets', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('Delete button is present in the action bar', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('delete-btn')).toBeTruthy();
+  });
+
+  it('Delete button has a minHeight of 48 (meets Apple HIG touch target)', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    const btn = getByTestId('delete-btn');
+    const { minHeight } = btn.props.style ?? {};
+    expect(minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  it('Favorite button has a minHeight of 48 when rendered', () => {
+    const { getByTestId } = render(
+      <ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} />
+    );
+    const btn = getByTestId('favorite-btn');
+    const { minHeight } = btn.props.style ?? {};
+    expect(minHeight).toBeGreaterThanOrEqual(44);
+  });
+});
+
 // ─── delete behaviour ─────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — delete behaviour', () => {
@@ -189,7 +241,7 @@ describe('ExerciseLogCard — delete behaviour', () => {
   });
 });
 
-// ─── top entry header label ───────────────────────────────────────────────────
+// ─── top entry header ─────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — top entry header', () => {
   it('renders "View or Edit this Entry" text', () => {
@@ -201,10 +253,23 @@ describe('ExerciseLogCard — top entry header', () => {
 // ─── accessibility ────────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — accessibility', () => {
-  it('exercise photo has an accessibilityLabel containing the exercise name', () => {
-    const log = { ...BASE_LOG, photo_url: 'https://example.com/run.jpg' };
-    const { getByLabelText } = render(<ExerciseLogCard log={log} onDelete={jest.fn()} />);
-    expect(getByLabelText(`Photo of ${log.exercise_name}`)).toBeTruthy();
+  it('Delete button has an accessibilityLabel', () => {
+    const { getByLabelText } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByLabelText('Delete this exercise')).toBeTruthy();
+  });
+
+  it('Favorite button has an accessibilityLabel when provided', () => {
+    const { getByLabelText } = render(
+      <ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} />
+    );
+    expect(getByLabelText('Add to favorites')).toBeTruthy();
+  });
+
+  it('Favorite button label changes to "Remove from favorites" when already favorited', () => {
+    const { getByLabelText } = render(
+      <ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite />
+    );
+    expect(getByLabelText('Remove from favorites')).toBeTruthy();
   });
 });
 
@@ -233,12 +298,26 @@ describe('ExerciseLogCard — favorite heart', () => {
     fireEvent.press(getByTestId('favorite-btn'));
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it('shows "Saved" label when isFavorite is true', () => {
+    const { getByText } = render(
+      <ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite />
+    );
+    expect(getByText('Saved')).toBeTruthy();
+  });
+
+  it('shows "Favorite" label when isFavorite is false', () => {
+    const { getByText } = render(
+      <ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} isFavorite={false} />
+    );
+    expect(getByText('Favorite')).toBeTruthy();
+  });
 });
 
 // ─── felt rating display ──────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — felt rating', () => {
-  it('renders the exercise name without a felt label when felt is absent', () => {
+  it('renders no felt label when felt is absent', () => {
     const { queryByText } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     expect(queryByText('Easy')).toBeNull();
     expect(queryByText('Good')).toBeNull();
@@ -268,7 +347,7 @@ describe('ExerciseLogCard — felt rating', () => {
   });
 });
 
-// ─── photo_url field presence on ExerciseLog type ─────────────────────────────
+// ─── photo_url type ───────────────────────────────────────────────────────────
 
 describe('ExerciseLog type — photo_url field', () => {
   it('is optional — log without photo_url is valid', () => {

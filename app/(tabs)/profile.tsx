@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   ScrollView,
   Share,
   StyleSheet,
@@ -138,6 +139,7 @@ export default function ProfileScreen() {
   const [ageInput, setAgeInput] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   // ── Daily targets ─────────────────────────────────────────────────────────
   const [calorieGoal, setCalorieGoal] = useState(String(profile?.daily_calorie_target || 2000));
@@ -248,6 +250,26 @@ export default function ProfileScreen() {
       Alert.alert('Error', 'Failed to save profile. Please try again.');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handleAvatarPress = () => {
+    if (isGuest) {
+      Alert.alert('Sign In Required', 'Create an account to add a profile photo.');
+      return;
+    }
+    if (profile?.avatar_url) {
+      Alert.alert(
+        'Profile Photo',
+        undefined,
+        [
+          { text: 'View Full Screen', onPress: () => setShowAvatarModal(true) },
+          { text: 'Change Photo', onPress: handlePickProfilePhoto },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      handlePickProfilePhoto();
     }
   };
 
@@ -392,9 +414,14 @@ export default function ProfileScreen() {
           text: 'Send Reset Email',
           onPress: async () => {
             try {
-              const { error } = await supabase.auth.resetPasswordForEmail(userEmail);
+              const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+                redirectTo: 'caloriepal://reset-password',
+              });
               if (error) throw error;
-              Alert.alert('Email Sent ✉️', `A password reset link has been sent to ${userEmail}.`);
+              Alert.alert(
+                'Email Sent ✉️',
+                `A password reset link has been sent to ${userEmail}. Open the link in the email to set a new password — it expires in 1 hour.`
+              );
             } catch (e: any) {
               Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
             }
@@ -473,9 +500,49 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>👤 Profile</Text>
 
+        {/* ── Full-screen avatar modal ─────────────────────────────────── */}
+        {profile?.avatar_url && (
+          <Modal
+            visible={showAvatarModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowAvatarModal(false)}
+            statusBarTranslucent
+          >
+            <View style={styles.photoModalOverlay}>
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                onPress={() => setShowAvatarModal(false)}
+                activeOpacity={1}
+              />
+              <Image
+                source={{ uri: profile.avatar_url }}
+                style={styles.fullScreenPhoto}
+                resizeMode="contain"
+                accessibilityLabel="Profile photo full screen"
+              />
+              <TouchableOpacity
+                style={styles.closePhotoBtn}
+                onPress={() => setShowAvatarModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close full screen photo"
+              >
+                <View style={styles.closePhotoBtnInner}>
+                  <Text style={styles.closePhotoBtnText}>✕</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </Modal>
+        )}
+
         {/* ── Avatar card ─────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.profileCard}>
-          <TouchableOpacity onPress={handlePickProfilePhoto} style={styles.avatarWrapper}>
+          <TouchableOpacity
+            onPress={handleAvatarPress}
+            style={styles.avatarWrapper}
+            accessibilityRole="button"
+            accessibilityLabel={profile?.avatar_url ? 'View or change profile photo' : 'Add profile photo'}
+          >
             {profile?.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} accessibilityLabel="Your profile photo" />
             ) : (
@@ -1394,6 +1461,38 @@ const styles = StyleSheet.create({
   deleteRow: { alignItems: 'center', marginTop: 8 },
   deleteText: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textMuted, textDecorationLine: 'underline' },
   version: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 8, marginBottom: 16 },
+
+  // Full-screen photo modal (shared with FoodLogCard / ExerciseLogCard pattern)
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullScreenPhoto: {
+    width: '100%',
+    height: '80%',
+  },
+  closePhotoBtn: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+  },
+  closePhotoBtnInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  closePhotoBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Nunito_700Bold',
+  },
   dataNoticeBox: {
     backgroundColor: Colors.background,
     borderRadius: 12,

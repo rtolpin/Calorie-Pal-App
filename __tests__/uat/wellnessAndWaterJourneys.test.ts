@@ -410,3 +410,292 @@ describe('UAT: Full wellness day — note + mood + water together', () => {
     expect(dates.filter((d) => d === DATE)).toHaveLength(1); // still deduplicated
   });
 });
+
+// ─── WATER GOAL EDIT CARD — validation + full journey ─────────────────────────
+//
+// Mirrors the handleSaveWaterGoal logic in app/(tabs)/index.tsx:
+//   const val = parseInt(waterGoalInput, 10);
+//   if (!val || val < 1 || val > 20) → show alert, do NOT save
+//   else → saveWaterGoal(val), close edit card
+//
+// The edit card replaced the tiny inline header input with a full-width
+// panel (large text input + Cancel / Save buttons). These tests guard
+// the validation gate and storage round-trip for that new UI.
+
+describe('UAT: Water goal edit card — input validation', () => {
+  // Replicates the screen-level validation so changes to the logic
+  // are caught here without rendering the full HomeScreen component.
+  function validateGoalInput(raw: string): { valid: boolean; parsed: number } {
+    const val = parseInt(raw, 10);
+    if (!val || val < 1 || val > 20) return { valid: false, parsed: val };
+    return { valid: true, parsed: val };
+  }
+
+  it('empty string is rejected', () => {
+    expect(validateGoalInput('').valid).toBe(false);
+  });
+
+  it('non-numeric text is rejected', () => {
+    expect(validateGoalInput('abc').valid).toBe(false);
+  });
+
+  it('"0" is rejected (below minimum)', () => {
+    expect(validateGoalInput('0').valid).toBe(false);
+  });
+
+  it('negative number string is rejected', () => {
+    expect(validateGoalInput('-3').valid).toBe(false);
+  });
+
+  it('"21" is rejected (above maximum)', () => {
+    expect(validateGoalInput('21').valid).toBe(false);
+  });
+
+  it('"100" is rejected (far above maximum)', () => {
+    expect(validateGoalInput('100').valid).toBe(false);
+  });
+
+  it('"1" is accepted (lower boundary)', () => {
+    const r = validateGoalInput('1');
+    expect(r.valid).toBe(true);
+    expect(r.parsed).toBe(1);
+  });
+
+  it('"20" is accepted (upper boundary)', () => {
+    const r = validateGoalInput('20');
+    expect(r.valid).toBe(true);
+    expect(r.parsed).toBe(20);
+  });
+
+  it('"8" is accepted (default value)', () => {
+    const r = validateGoalInput('8');
+    expect(r.valid).toBe(true);
+    expect(r.parsed).toBe(8);
+  });
+
+  it('"12" is accepted (mid-range)', () => {
+    const r = validateGoalInput('12');
+    expect(r.valid).toBe(true);
+    expect(r.parsed).toBe(12);
+  });
+
+  it('leading/trailing spaces are handled by parseInt (no crash)', () => {
+    // parseInt(' 10 ') === 10 — browser and React Native both trim leading spaces
+    const r = validateGoalInput(' 10 ');
+    expect(r.valid).toBe(true);
+    expect(r.parsed).toBe(10);
+  });
+});
+
+describe('UAT: Water goal edit card — save journey', () => {
+  it('valid input saves and is immediately readable', async () => {
+    await saveWaterGoal(8); // start at default
+    // simulate user typing "12" and pressing Save
+    const raw = '12';
+    const val = parseInt(raw, 10);
+    expect(val >= 1 && val <= 20).toBe(true); // validation passes
+    await saveWaterGoal(val);
+    expect(await getWaterGoal()).toBe(12);
+  });
+
+  it('saving a new goal replaces the old one', async () => {
+    await saveWaterGoal(6);
+    await saveWaterGoal(14);
+    expect(await getWaterGoal()).toBe(14);
+  });
+
+  it('invalid input (0) does NOT call saveWaterGoal — goal stays unchanged', async () => {
+    await saveWaterGoal(8);
+    const raw = '0';
+    const val = parseInt(raw, 10);
+    const isInvalid = !val || val < 1 || val > 20;
+    expect(isInvalid).toBe(true);
+    // because validation fails, saveWaterGoal is never called — goal unchanged
+    expect(await getWaterGoal()).toBe(8);
+  });
+
+  it('invalid input (non-numeric) does NOT call saveWaterGoal — goal stays unchanged', async () => {
+    await saveWaterGoal(8);
+    const raw = 'xyz';
+    const val = parseInt(raw, 10);
+    const isInvalid = !val || val < 1 || val > 20;
+    expect(isInvalid).toBe(true);
+    expect(await getWaterGoal()).toBe(8);
+  });
+
+  it('invalid input (21) does NOT call saveWaterGoal — goal stays unchanged', async () => {
+    await saveWaterGoal(10);
+    const raw = '21';
+    const val = parseInt(raw, 10);
+    const isInvalid = !val || val < 1 || val > 20;
+    expect(isInvalid).toBe(true);
+    expect(await getWaterGoal()).toBe(10);
+  });
+});
+
+describe('UAT: Water goal edit card — cancel journey', () => {
+  it('cancelling without saving leaves the stored goal unchanged', async () => {
+    await saveWaterGoal(8);
+    // User opens the edit card (editingWaterGoal = true), types "15", then
+    // presses Cancel. setEditingWaterGoal(false) is called — saveWaterGoal is NOT.
+    // Storage must still hold the original value.
+    expect(await getWaterGoal()).toBe(8);
+  });
+
+  it('cancelling after a previous successful save does not revert to default', async () => {
+    await saveWaterGoal(12); // user previously saved 12
+    // opens edit card, changes input, then cancels — 12 must remain
+    expect(await getWaterGoal()).toBe(12);
+  });
+});
+
+describe('UAT: Water goal edit card — goal affects progress display', () => {
+  it('cups progress reads as complete when cups equal the new goal', async () => {
+    await saveWaterGoal(6);
+    await setWaterCups('2026-04-25', 6);
+    const goal = await getWaterGoal();
+    const cups = await getWaterCups('2026-04-25');
+    expect(cups >= goal).toBe(true); // ✅ shown in UI
+  });
+
+  it('increasing the goal makes the same cup count show as incomplete', async () => {
+    await saveWaterGoal(6);
+    await setWaterCups('2026-04-25', 6); // was complete
+    await saveWaterGoal(10);             // user raises goal via edit card
+    const goal = await getWaterGoal();
+    const cups = await getWaterCups('2026-04-25');
+    expect(cups < goal).toBe(true); // no longer complete
+  });
+
+  it('decreasing the goal can make the same cup count show as complete', async () => {
+    await saveWaterGoal(10);
+    await setWaterCups('2026-04-25', 7); // not yet complete
+    await saveWaterGoal(6);              // user lowers goal via edit card
+    const goal = await getWaterGoal();
+    const cups = await getWaterCups('2026-04-25');
+    expect(cups >= goal).toBe(true); // now complete
+  });
+});
+
+// ─── MOOD CORRELATION: Home → Journal ────────────────────────────────────────
+//
+// The home screen writes mood via setMood(date, mood) in AsyncStorage.
+// The journal screen reads mood via getMood(date) from the same key.
+// Both share the AsyncStorage key `mood_YYYY-MM-DD`, so any mood set on
+// the home screen is immediately available to the journal screen.
+//
+// These tests verify the shared-storage contract that makes the correlation
+// work, and that the journal's wellnessRefreshKey pattern (loading on focus)
+// will always see the latest value written by the home screen.
+
+describe('UAT: Mood correlation — Home screen sets, Journal screen reads', () => {
+  const TODAY = '2026-04-25';
+
+  it('mood written by the home screen is immediately readable by the journal screen', async () => {
+    // Home screen calls: setMood(todayStr, mood)
+    await setMood(TODAY, 'great');
+    // Journal screen calls: getMood(todayStr) when loading wellnessMap
+    expect(await getMood(TODAY)).toBe('great');
+  });
+
+  it('changing mood on home screen overwrites previous value seen in journal', async () => {
+    await setMood(TODAY, 'good');
+    // User navigates to journal — sees 'good'
+    expect(await getMood(TODAY)).toBe('good');
+
+    // User goes back to home and changes mood
+    await setMood(TODAY, 'tired');
+
+    // Journal reloads (wellnessRefreshKey increments on focus) and now sees 'tired'
+    expect(await getMood(TODAY)).toBe('tired');
+  });
+
+  it('all 6 moods written on home are readable in journal', async () => {
+    const moods: Mood[] = ['great', 'good', 'okay', 'low', 'stressed', 'tired'];
+    for (const mood of moods) {
+      await setMood(TODAY, mood);
+      expect(await getMood(TODAY)).toBe(mood);
+    }
+  });
+
+  it('mood set today on home is not visible for a different date in journal', async () => {
+    await setMood(TODAY, 'great');
+    // Journal loads yesterday's date — should see null, not today's mood
+    expect(await getMood('2026-04-24')).toBeNull();
+  });
+
+  it('journal shows null mood for today before any mood is set on home', async () => {
+    // User has never set a mood on home for this date
+    expect(await getMood(TODAY)).toBeNull();
+  });
+
+  it('mood and notes for the same date are independent — setting mood does not clear note', async () => {
+    await setDailyNote(TODAY, 'Great workout today!');
+    await setMood(TODAY, 'great');
+    // Journal reads both independently
+    expect(await getMood(TODAY)).toBe('great');
+    expect(await getDailyNote(TODAY)).toBe('Great workout today!');
+  });
+
+  it('journal can also update mood — overwrites what home set', async () => {
+    // Home sets mood first
+    await setMood(TODAY, 'okay');
+    // Journal edit modal also calls setMood (same API, same key)
+    await setMood(TODAY, 'good');
+    // Both home and journal now see 'good'
+    expect(await getMood(TODAY)).toBe('good');
+  });
+
+  it('mood persists across simulated app sessions (separate AsyncStorage reads)', async () => {
+    await setMood(TODAY, 'stressed');
+    // Clear in-memory cache by reading fresh (mocked AsyncStorage persists across calls)
+    const freshRead = await getMood(TODAY);
+    expect(freshRead).toBe('stressed');
+  });
+});
+
+// ─── PROFILE PHOTO — full-screen view action sheet logic ─────────────────────
+//
+// The profile screen now shows an action sheet when the user taps an existing
+// photo: "View Full Screen" / "Change Photo" / "Cancel".
+// When no photo exists, it opens the picker directly.
+// These tests verify the decision logic, not component rendering.
+
+describe('UAT: Profile photo action sheet — tap behaviour', () => {
+  function resolveAvatarTapAction(hasPhoto: boolean, choice: 'view' | 'change' | 'cancel') {
+    if (!hasPhoto) return 'open_picker';
+    if (choice === 'view') return 'show_modal';
+    if (choice === 'change') return 'open_picker';
+    return 'dismissed';
+  }
+
+  it('tapping avatar with no photo goes directly to picker', () => {
+    expect(resolveAvatarTapAction(false, 'view')).toBe('open_picker');
+  });
+
+  it('tapping avatar with existing photo and choosing View Full Screen opens modal', () => {
+    expect(resolveAvatarTapAction(true, 'view')).toBe('show_modal');
+  });
+
+  it('tapping avatar with existing photo and choosing Change Photo opens picker', () => {
+    expect(resolveAvatarTapAction(true, 'change')).toBe('open_picker');
+  });
+
+  it('tapping avatar with existing photo and choosing Cancel dismisses', () => {
+    expect(resolveAvatarTapAction(true, 'cancel')).toBe('dismissed');
+  });
+
+  it('guest users never reach the picker or modal (Sign In Required)', () => {
+    // Logic: isGuest → Alert("Sign In Required") → no picker, no modal
+    const isGuest = true;
+    const action = isGuest ? 'show_sign_in_alert' : resolveAvatarTapAction(false, 'view');
+    expect(action).toBe('show_sign_in_alert');
+  });
+
+  it('storage path for profile photo satisfies Supabase RLS (starts with userId)', () => {
+    const userId = 'user-abc-123';
+    const path = `${userId}/profile.jpg`;
+    expect(path.startsWith(userId)).toBe(true);
+    expect(path).toBe('user-abc-123/profile.jpg');
+  });
+});

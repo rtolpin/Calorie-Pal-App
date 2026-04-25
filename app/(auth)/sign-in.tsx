@@ -60,11 +60,13 @@ export default function SignInScreen() {
     }
     setResetLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmed);
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: 'caloriepal://reset-password',
+      });
       if (error) throw error;
       Alert.alert(
         'Reset Email Sent ✉️',
-        `We've sent a password reset link to ${trimmed}. Check your inbox and follow the link to set a new password.`
+        `We've sent a password reset link to ${trimmed}. Open the link in the email to set a new password — it expires in 1 hour.`
       );
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');

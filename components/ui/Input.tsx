@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { forwardRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,10 @@ interface InputProps extends TextInputProps {
   leftIcon?: keyof typeof Ionicons.glyphMap;
 }
 
-export function Input({ label, error, secureToggle, leftIcon, style, ...props }: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { label, error, secureToggle, leftIcon, style, ...props },
+  ref
+) {
   const [showPassword, setShowPassword] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -34,6 +37,7 @@ export function Input({ label, error, secureToggle, leftIcon, style, ...props }:
           />
         )}
         <TextInput
+          ref={ref}
           style={[styles.input, style]}
           placeholderTextColor={Colors.textMuted}
           secureTextEntry={secureToggle ? !showPassword : props.secureTextEntry}
@@ -54,7 +58,7 @@ export function Input({ label, error, secureToggle, leftIcon, style, ...props }:
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: { marginBottom: 16 },

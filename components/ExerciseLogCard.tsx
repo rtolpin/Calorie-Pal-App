@@ -134,90 +134,109 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
       )}
 
       <View style={styles.card}>
-        {log.photo_url ? (
-          <TouchableOpacity
-            onPress={handlePhotoPress}
-            style={styles.photoContainer}
-            testID="photo-container"
-            disabled={replacing}
-          >
-            <Image source={{ uri: log.photo_url }} style={styles.photo} accessibilityLabel={`Photo of ${log.exercise_name}`} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.iconContainer}>
-            <Text style={styles.emoji}>{log.exercise_emoji}</Text>
-          </View>
-        )}
+        {/* ── horizontal body: photo/icon + content ── */}
+        <View style={styles.cardBody}>
+          {/* Left column — photo if available, otherwise emoji tile (same 80×80 footprint) */}
+          {log.photo_url ? (
+            <TouchableOpacity
+              onPress={handlePhotoPress}
+              style={styles.photoContainer}
+              testID="photo-container"
+              disabled={replacing}
+            >
+              <Image
+                source={{ uri: log.photo_url }}
+                style={styles.photo}
+                accessibilityLabel={`Photo of ${log.exercise_name}`}
+              />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.iconContainer}>
+              <Text style={styles.emoji}>{log.exercise_emoji}</Text>
+            </View>
+          )}
 
-        <View style={styles.content}>
-          {/* Top label — mirrors food card pattern */}
-          <View style={styles.entryHeader}>
-            <Ionicons name="eye-outline" size={11} color={Colors.secondary} />
-            <Text style={styles.entryHeaderText}>View or Edit this Entry</Text>
-          </View>
+          <View style={styles.content}>
+            {/* Tappable "View or Edit" strip — mirrors food card pattern */}
+            <View style={styles.entryHeader}>
+              <Ionicons name="eye-outline" size={12} color={Colors.secondary} />
+              <Text style={styles.entryHeaderText}>View or Edit this Entry</Text>
+            </View>
 
-          <View style={styles.header}>
             <Text style={styles.exerciseName} numberOfLines={1}>
-              {log.photo_url ? `${log.exercise_emoji} ` : ''}{log.exercise_name}
+              {log.exercise_name}
             </Text>
-            <View style={styles.headerActions}>
-              {onToggleFavorite && (
-                <TouchableOpacity
-                  onPress={onToggleFavorite}
-                  style={styles.favoriteBtn}
-                  testID="favorite-btn"
-                >
-                  <Ionicons
-                    name={isFavorite ? 'heart' : 'heart-outline'}
-                    size={18}
-                    color={isFavorite ? '#E91E63' : Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn} testID="delete-btn">
-                <Ionicons name="trash-outline" size={18} color={Colors.error} />
-              </TouchableOpacity>
-            </View>
-          </View>
 
-          <Text style={styles.dateTime}>{formatDateTime(log.logged_at)}</Text>
+            <Text style={styles.dateTime}>{formatDateTime(log.logged_at)}</Text>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statBadge}>
-              <Text style={styles.statEmoji}>⏱️</Text>
-              <Text style={styles.statValue}>{log.duration_minutes} min</Text>
-            </View>
-            <View style={[styles.statBadge, styles.calorieBadge]}>
-              <Text style={styles.statEmoji}>🔥</Text>
-              <Text style={[styles.statValue, styles.calorieValue]}>
-                −{Math.round(log.calories_burned)} cal burned
-              </Text>
-            </View>
-            {log.felt && (
-              <View style={[styles.statBadge, { backgroundColor: FELT_META[log.felt].color + '18' }]}>
-                <Text style={styles.statEmoji}>{FELT_META[log.felt].emoji}</Text>
-                <Text style={[styles.statValue, { color: FELT_META[log.felt].color }]}>
-                  {FELT_META[log.felt].label}
+            <View style={styles.statsRow}>
+              <View style={styles.statBadge}>
+                <Text style={styles.statEmoji}>⏱️</Text>
+                <Text style={styles.statValue}>{log.duration_minutes} min</Text>
+              </View>
+              <View style={[styles.statBadge, styles.calorieBadge]}>
+                <Text style={styles.statEmoji}>🔥</Text>
+                <Text style={[styles.statValue, styles.calorieValue]}>
+                  −{Math.round(log.calories_burned)} cal
                 </Text>
               </View>
-            )}
-          </View>
-
-          {log.notes ? (
-            <View style={styles.notesBox}>
-              <Text style={styles.notesLabel}>📝 Notes</Text>
-              <Text style={styles.notesText}>{log.notes}</Text>
+              {log.felt && (
+                <View style={[styles.statBadge, { backgroundColor: FELT_META[log.felt].color + '18' }]}>
+                  <Text style={styles.statEmoji}>{FELT_META[log.felt].emoji}</Text>
+                  <Text style={[styles.statValue, { color: FELT_META[log.felt].color }]}>
+                    {FELT_META[log.felt].label}
+                  </Text>
+                </View>
+              )}
             </View>
-          ) : null}
 
-          <Text style={styles.disclaimer}>
-            * Calorie burn is estimated based on average metabolic rates for this activity type and duration. Actual calories burned vary by individual body weight, fitness level, and intensity.
-          </Text>
+            {log.notes ? (
+              <View style={styles.notesBox}>
+                <Text style={styles.notesLabel}>📝 Notes</Text>
+                <Text style={styles.notesText}>{log.notes}</Text>
+              </View>
+            ) : null}
 
-          <View style={styles.detailFooter}>
-            <Ionicons name="checkmark-circle-outline" size={13} color={Colors.textMuted} />
-            <Text style={styles.detailFooterText}>All details shown above</Text>
+            <Text style={styles.disclaimer}>
+              * Calorie burn is estimated — actual results vary by weight, intensity, and fitness level.
+            </Text>
           </View>
+        </View>
+
+        {/* ── action bar ── */}
+        <View style={styles.actionRow}>
+          {onToggleFavorite && (
+            <>
+              <TouchableOpacity
+                onPress={onToggleFavorite}
+                style={styles.actionBtn}
+                testID="favorite-btn"
+                accessibilityRole="button"
+                accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Ionicons
+                  name={isFavorite ? 'heart' : 'heart-outline'}
+                  size={18}
+                  color={isFavorite ? '#E91E63' : Colors.textMuted}
+                />
+                <Text style={[styles.actionBtnText, isFavorite && styles.actionFaveActive]}>
+                  {isFavorite ? 'Saved' : 'Favorite'}
+                </Text>
+              </TouchableOpacity>
+              <View style={styles.actionDivider} />
+            </>
+          )}
+
+          <TouchableOpacity
+            onPress={handleDelete}
+            style={styles.actionBtn}
+            testID="delete-btn"
+            accessibilityRole="button"
+            accessibilityLabel="Delete this exercise"
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.error} />
+            <Text style={[styles.actionBtnText, styles.actionDeleteText]}>Delete</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Animated.View>
@@ -226,39 +245,39 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
     backgroundColor: Colors.secondary + '15',
     borderRadius: 16,
     marginBottom: 12,
-    padding: 12,
     borderWidth: 1.5,
     borderColor: Colors.secondary + '40',
+    overflow: 'hidden',
+  },
+  cardBody: {
+    flexDirection: 'row',
+    padding: 12,
     gap: 12,
   },
+
+  // ── left column ──────────────────────────────────────────────────────────────
+  photoContainer: { alignSelf: 'flex-start' },
+  photo: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+  },
   iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 80,
+    height: 80,
+    borderRadius: 16,
     backgroundColor: Colors.secondary + '30',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
-  emoji: { fontSize: 26 },
+  emoji: { fontSize: 34 },
+
+  // ── right content ─────────────────────────────────────────────────────────────
   content: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  exerciseName: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 15,
-    color: Colors.text,
-    flex: 1,
-    marginRight: 8,
-  },
   entryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -270,19 +289,23 @@ const styles = StyleSheet.create({
   },
   entryHeaderText: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.secondary,
+    flex: 1,
   },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  favoriteBtn: { padding: 4 },
-  deleteBtn: { padding: 4 },
+  exerciseName: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.text,
+    marginBottom: 2,
+  },
   dateTime: {
     fontFamily: 'Nunito_400Regular',
     fontSize: 11,
     color: Colors.textLight,
     marginBottom: 8,
   },
-  statsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  statsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 4 },
   statBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -292,15 +315,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
   },
-  calorieBadge: {
-    backgroundColor: Colors.success + '20',
-  },
+  calorieBadge: { backgroundColor: Colors.success + '20' },
   statEmoji: { fontSize: 13 },
-  statValue: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 13,
-    color: Colors.text,
-  },
+  statValue: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text },
   calorieValue: { color: Colors.success },
   notesBox: {
     marginTop: 8,
@@ -330,8 +347,36 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: 14,
   },
-  photoContainer: { alignSelf: 'flex-start' },
-  photo: { width: 72, height: 72, borderRadius: 12 },
+
+  // ── action bar ──────────────────────────────────────────────────────────────
+  actionRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: Colors.secondary + '30',
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    minHeight: 48,
+  },
+  actionBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.secondary,
+  },
+  actionFaveActive: { color: '#E91E63' },
+  actionDeleteText: { color: Colors.error },
+  actionDivider: {
+    width: 1,
+    backgroundColor: Colors.secondary + '30',
+    marginVertical: 8,
+  },
+
+  // ── full-screen photo modal ──────────────────────────────────────────────────
   photoModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.92)',
@@ -351,19 +396,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.4)',
   },
   closePhotoBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Nunito_700Bold' },
-  detailFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: Colors.secondary + '30',
-    justifyContent: 'flex-end',
-  },
-  detailFooterText: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
 });

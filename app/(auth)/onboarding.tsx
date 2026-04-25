@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -48,6 +51,12 @@ export default function OnboardingScreen() {
   const [gender, setGender] = useState<Gender>('other');
   const [customCalories, setCustomCalories] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Refs used to chain keyboard focus through the stats fields
+  const weightRef   = useRef<TextInput>(null);
+  const heightCmRef = useRef<TextInput>(null);
+  const heightFtRef = useRef<TextInput>(null);
+  const heightInRef = useRef<TextInput>(null);
 
   const steps = ['goals', 'stats', 'activity', 'calories'] as const;
   const currentStep = steps[step];
@@ -148,7 +157,16 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="always">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.kav}
+      >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
             <Animated.View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
@@ -200,15 +218,30 @@ export default function OnboardingScreen() {
               ))}
             </View>
 
-            <Input label="Age" value={age} onChangeText={setAge} placeholder="e.g. 28" keyboardType="numeric" />
+            <Input
+              label="Age"
+              value={age}
+              onChangeText={setAge}
+              placeholder="e.g. 28"
+              keyboardType="numeric"
+              returnKeyType="next"
+              onSubmitEditing={() => weightRef.current?.focus()}
+            />
             <View style={styles.weightRow}>
               <View style={{ flex: 1 }}>
                 <Input
+                  ref={weightRef}
                   label={`Weight (${weightUnit})`}
                   value={weightInput}
                   onChangeText={setWeightInput}
                   placeholder={weightUnit === 'lbs' ? 'e.g. 154' : 'e.g. 70'}
                   keyboardType="numeric"
+                  returnKeyType="next"
+                  onSubmitEditing={() =>
+                    heightUnit === 'cm'
+                      ? heightCmRef.current?.focus()
+                      : heightFtRef.current?.focus()
+                  }
                 />
               </View>
               <View style={styles.unitToggle}>
@@ -229,11 +262,14 @@ export default function OnboardingScreen() {
               <View style={{ flex: 1 }}>
                 {heightUnit === 'cm' ? (
                   <Input
+                    ref={heightCmRef}
                     label="Height (cm)"
                     value={heightCm}
                     onChangeText={setHeightCm}
                     placeholder="e.g. 170"
                     keyboardType="numeric"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                 ) : (
                   <View>
@@ -241,23 +277,29 @@ export default function OnboardingScreen() {
                     <View style={styles.ftInRow}>
                       <View style={styles.ftField}>
                         <TextInput
+                          ref={heightFtRef}
                           style={styles.ftInput}
                           value={heightFt}
                           onChangeText={setHeightFt}
                           placeholder="5"
                           keyboardType="numeric"
                           placeholderTextColor={Colors.textMuted}
+                          returnKeyType="next"
+                          onSubmitEditing={() => heightInRef.current?.focus()}
                         />
                         <Text style={styles.ftUnit}>ft</Text>
                       </View>
                       <View style={styles.ftField}>
                         <TextInput
+                          ref={heightInRef}
                           style={styles.ftInput}
                           value={heightIn}
                           onChangeText={setHeightIn}
                           placeholder="6"
                           keyboardType="numeric"
                           placeholderTextColor={Colors.textMuted}
+                          returnKeyType="done"
+                          onSubmitEditing={Keyboard.dismiss}
                         />
                         <Text style={styles.ftUnit}>in</Text>
                       </View>
@@ -319,6 +361,8 @@ export default function OnboardingScreen() {
               placeholder={String(getRecommendedCalories())}
               keyboardType="numeric"
               leftIcon="flame-outline"
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
             <Text style={styles.macroNote}>
               Default macro split: 30% Protein · 40% Carbs · 30% Fat{'\n'}
@@ -355,12 +399,14 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
+  kav: { flex: 1 },
   container: { flexGrow: 1, padding: 24 },
   progressContainer: { marginBottom: 28 },
   progressBar: {
