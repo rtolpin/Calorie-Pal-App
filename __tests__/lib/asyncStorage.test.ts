@@ -20,8 +20,18 @@ import {
   saveWaterGoal,
   getMood,
   setMood,
+  getDailyNote,
+  setDailyNote,
+  getFavoriteMealNames,
+  toggleFavoriteMeal,
+  getFavoriteExerciseNames,
+  toggleFavoriteExercise,
+  saveDayTemplate,
+  getDayTemplate,
+  clearDayTemplate,
   Mood,
 } from '../../lib/asyncStorage';
+import { DayTemplate } from '../../types';
 import { FoodLog, ExerciseLog } from '../../types';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -338,6 +348,179 @@ describe('Mood tracking', () => {
   it('setting mood for one date does not affect another', async () => {
     await setMood(TODAY, 'good');
     expect(await getMood(YESTERDAY)).toBeNull();
+  });
+});
+
+describe('Daily journal notes', () => {
+  const TODAY = '2026-04-25';
+
+  it('returns null when no note has been written for a date', async () => {
+    expect(await getDailyNote(TODAY)).toBeNull();
+  });
+
+  it('saves and retrieves a note for a date', async () => {
+    await setDailyNote(TODAY, 'Had a great salad for lunch!');
+    expect(await getDailyNote(TODAY)).toBe('Had a great salad for lunch!');
+  });
+
+  it('overwrites a previous note for the same date', async () => {
+    await setDailyNote(TODAY, 'First note');
+    await setDailyNote(TODAY, 'Updated note');
+    expect(await getDailyNote(TODAY)).toBe('Updated note');
+  });
+
+  it('saving a blank note removes it (returns null)', async () => {
+    await setDailyNote(TODAY, 'Some content');
+    await setDailyNote(TODAY, '');
+    expect(await getDailyNote(TODAY)).toBeNull();
+  });
+
+  it('saving a whitespace-only note removes it', async () => {
+    await setDailyNote(TODAY, 'Some content');
+    await setDailyNote(TODAY, '   ');
+    expect(await getDailyNote(TODAY)).toBeNull();
+  });
+
+  it('different dates store notes independently', async () => {
+    await setDailyNote('2026-04-25', 'Note A');
+    await setDailyNote('2026-04-24', 'Note B');
+    expect(await getDailyNote('2026-04-25')).toBe('Note A');
+    expect(await getDailyNote('2026-04-24')).toBe('Note B');
+  });
+
+  it('setting a note for one date does not affect another date', async () => {
+    await setDailyNote('2026-04-25', 'Note A');
+    expect(await getDailyNote('2026-04-24')).toBeNull();
+  });
+});
+
+describe('Favorites — meals', () => {
+  it('returns empty array when no meals are favourited', async () => {
+    expect(await getFavoriteMealNames()).toEqual([]);
+  });
+
+  it('adds a meal name when toggled on', async () => {
+    const isNow = await toggleFavoriteMeal('Grilled Chicken Salad');
+    expect(isNow).toBe(true);
+    expect(await getFavoriteMealNames()).toContain('Grilled Chicken Salad');
+  });
+
+  it('removes a meal name when toggled off', async () => {
+    await toggleFavoriteMeal('Oatmeal');
+    const isNow = await toggleFavoriteMeal('Oatmeal');
+    expect(isNow).toBe(false);
+    expect(await getFavoriteMealNames()).not.toContain('Oatmeal');
+  });
+
+  it('multiple meals can be favourited independently', async () => {
+    await toggleFavoriteMeal('Salad');
+    await toggleFavoriteMeal('Pasta');
+    const names = await getFavoriteMealNames();
+    expect(names).toContain('Salad');
+    expect(names).toContain('Pasta');
+  });
+
+  it('toggling one meal does not affect another', async () => {
+    await toggleFavoriteMeal('Salad');
+    await toggleFavoriteMeal('Pasta');
+    await toggleFavoriteMeal('Salad'); // unfavorite
+    expect(await getFavoriteMealNames()).toContain('Pasta');
+    expect(await getFavoriteMealNames()).not.toContain('Salad');
+  });
+});
+
+describe('Favorites — exercises', () => {
+  it('returns empty array when no exercises are favourited', async () => {
+    expect(await getFavoriteExerciseNames()).toEqual([]);
+  });
+
+  it('adds an exercise name when toggled on', async () => {
+    const isNow = await toggleFavoriteExercise('Running');
+    expect(isNow).toBe(true);
+    expect(await getFavoriteExerciseNames()).toContain('Running');
+  });
+
+  it('removes an exercise name when toggled off', async () => {
+    await toggleFavoriteExercise('Yoga');
+    const isNow = await toggleFavoriteExercise('Yoga');
+    expect(isNow).toBe(false);
+    expect(await getFavoriteExerciseNames()).not.toContain('Yoga');
+  });
+
+  it('meal and exercise favorites are stored independently', async () => {
+    await toggleFavoriteMeal('Salad');
+    await toggleFavoriteExercise('Running');
+    expect(await getFavoriteMealNames()).toEqual(['Salad']);
+    expect(await getFavoriteExerciseNames()).toEqual(['Running']);
+  });
+});
+
+describe('Day template', () => {
+  const TEMPLATE: DayTemplate = {
+    savedAt: '2026-04-25T10:00:00.000Z',
+    sourceDate: '2026-04-25',
+    foods: [
+      {
+        meal_name: 'Oatmeal',
+        foods_detected: ['oats'],
+        calories: 350,
+        protein_g: 10,
+        carbs_g: 60,
+        fat_g: 5,
+        fiber_g: 6,
+        sugar_g: 12,
+        sodium_mg: 80,
+        cholesterol_mg: 0,
+        saturated_fat_g: 1,
+      },
+    ],
+    exercises: [
+      {
+        exercise_name: 'Running',
+        exercise_emoji: '🏃',
+        duration_minutes: 30,
+        calories_burned: 300,
+        felt: 'good',
+      },
+    ],
+  };
+
+  it('returns null when no template has been saved', async () => {
+    expect(await getDayTemplate()).toBeNull();
+  });
+
+  it('saves and retrieves a template', async () => {
+    await saveDayTemplate(TEMPLATE);
+    const result = await getDayTemplate();
+    expect(result?.sourceDate).toBe('2026-04-25');
+    expect(result?.foods).toHaveLength(1);
+    expect(result?.exercises).toHaveLength(1);
+  });
+
+  it('overwrites a previous template', async () => {
+    await saveDayTemplate(TEMPLATE);
+    const updated: DayTemplate = { ...TEMPLATE, sourceDate: '2026-04-26', foods: [], exercises: [] };
+    await saveDayTemplate(updated);
+    expect((await getDayTemplate())?.sourceDate).toBe('2026-04-26');
+  });
+
+  it('persists food macro data correctly', async () => {
+    await saveDayTemplate(TEMPLATE);
+    const food = (await getDayTemplate())?.foods[0];
+    expect(food?.meal_name).toBe('Oatmeal');
+    expect(food?.calories).toBe(350);
+    expect(food?.protein_g).toBe(10);
+  });
+
+  it('persists exercise felt rating', async () => {
+    await saveDayTemplate(TEMPLATE);
+    expect((await getDayTemplate())?.exercises[0].felt).toBe('good');
+  });
+
+  it('clearDayTemplate removes the saved template', async () => {
+    await saveDayTemplate(TEMPLATE);
+    await clearDayTemplate();
+    expect(await getDayTemplate()).toBeNull();
   });
 });
 

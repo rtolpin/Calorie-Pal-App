@@ -108,6 +108,45 @@ describe('FoodLogCard — photo press: with photo', () => {
   });
 });
 
+describe('FoodLogCard — accessibility', () => {
+  it('food photo has an accessibilityLabel containing the meal name', () => {
+    const log = { ...BASE_LOG, photo_url: 'https://example.com/photo.jpg' };
+    const { getByLabelText } = render(<FoodLogCard log={log} onDelete={jest.fn()} />);
+    expect(getByLabelText(`Photo of ${log.meal_name}`)).toBeTruthy();
+  });
+
+  it('delete button is accessible', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    const btn = getByTestId('delete-btn');
+    expect(btn).toBeTruthy();
+  });
+});
+
+describe('FoodLogCard — favorite heart', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('does not render the favorite button when onToggleFavorite is not provided', () => {
+    const { queryByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(queryByTestId('favorite-btn')).toBeNull();
+  });
+
+  it('renders the favorite button when onToggleFavorite is provided', () => {
+    const { getByTestId } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={jest.fn()} />
+    );
+    expect(getByTestId('favorite-btn')).toBeTruthy();
+  });
+
+  it('calls onToggleFavorite when the heart is pressed', () => {
+    const onToggle = jest.fn();
+    const { getByTestId } = render(
+      <FoodLogCard log={BASE_LOG} onDelete={jest.fn()} onToggleFavorite={onToggle} />
+    );
+    fireEvent.press(getByTestId('favorite-btn'));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('FoodLogCard — delete behaviour', () => {
   beforeEach(() => {
     jest.clearAllMocks();

@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.rtolpin.caloriepal",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "deploymentTarget": "16.0",
       "infoPlist": {
         "NSCameraUsageDescription": "CaloriePal needs camera access to snap and analyze your meals",

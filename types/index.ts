@@ -64,6 +64,8 @@ export interface DailySummary {
   log_count: number;
 }
 
+export type ExerciseFelt = 'easy' | 'good' | 'hard' | 'exhausting';
+
 export interface ExerciseLog {
   id: string;
   user_id?: string;
@@ -71,9 +73,42 @@ export interface ExerciseLog {
   exercise_emoji: string;
   duration_minutes: number;
   calories_burned: number;
+  felt?: ExerciseFelt;
+  photo_url?: string;
   notes?: string;
   logged_at: string;
   created_at: string;
+}
+
+export interface DayTemplateFood {
+  meal_name: string;
+  foods_detected: string[];
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  sugar_g: number;
+  sodium_mg: number;
+  cholesterol_mg: number;
+  saturated_fat_g: number;
+  notes?: string;
+}
+
+export interface DayTemplateExercise {
+  exercise_name: string;
+  exercise_emoji: string;
+  duration_minutes: number;
+  calories_burned: number;
+  felt?: ExerciseFelt;
+  notes?: string;
+}
+
+export interface DayTemplate {
+  savedAt: string;
+  sourceDate: string;
+  foods: DayTemplateFood[];
+  exercises: DayTemplateExercise[];
 }
 
 export interface ExercisePreset {

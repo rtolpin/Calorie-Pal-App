@@ -222,7 +222,7 @@ export default function SnapResultScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         {capturedPhotoUri && (
-          <Image source={{ uri: capturedPhotoUri }} style={styles.previewImage} blurRadius={2} />
+          <Image source={{ uri: capturedPhotoUri }} style={styles.previewImage} blurRadius={2} accessibilityLabel="Meal photo preview" />
         )}
         <LoadingView />
       </SafeAreaView>
@@ -253,7 +253,7 @@ export default function SnapResultScreen() {
 
           {capturedPhotoUri && (
             <Animated.View entering={FadeIn} style={styles.photoContainer}>
-              <Image source={{ uri: capturedPhotoUri }} style={styles.photo} />
+              <Image source={{ uri: capturedPhotoUri }} style={styles.photo} accessibilityLabel="Captured meal photo" />
             </Animated.View>
           )}
 

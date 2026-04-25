@@ -445,7 +445,7 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.springify()} style={styles.profileCard}>
           <TouchableOpacity onPress={handlePickProfilePhoto} style={styles.avatarWrapper}>
             {profile?.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} accessibilityLabel="Your profile photo" />
             ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initials}</Text>

@@ -77,6 +77,8 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
         exercise_emoji: log.exercise_emoji,
         duration_minutes: log.duration_minutes,
         calories_burned: log.calories_burned,
+        photo_url: log.photo_url,
+        felt: log.felt,
         notes: log.notes,
         logged_at: log.logged_at || now,
       })

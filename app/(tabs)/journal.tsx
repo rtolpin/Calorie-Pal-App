@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,8 +24,18 @@ import { GuestBanner } from '../../components/GuestBanner';
 import { OfflineBanner } from '../../components/ui/OfflineBanner';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
-import { getWaterCups, getWaterGoal, getMood, Mood } from '../../lib/asyncStorage';
+import {
+  getWaterCups, getWaterGoal, getMood, setMood, getDailyNote, setDailyNote, Mood,
+  getFavoriteMealNames, toggleFavoriteMeal,
+  getFavoriteExerciseNames, toggleFavoriteExercise,
+  getDayTemplate, saveDayTemplate, DayTemplate,
+} from '../../lib/asyncStorage';
 import { toLocalDateStr } from '../../lib/dateUtils';
+import {
+  getRecentPastEntries, groupEntriesByDate, getMoodColor, getMoodQuote,
+  filterFavoriteEntries, filterByDateRange,
+} from '../../lib/journalUtils';
+import { DayTemplateFood, DayTemplateExercise } from '../../types';
 import { FoodLog, ExerciseLog } from '../../types';
 import { Colors } from '../../constants/Colors';
 
@@ -38,10 +52,20 @@ interface DailyWellness {
   waterCups: number;
   waterGoal: number;
   mood: Mood | null;
+  note: string | null;
 }
 
-type Filter = 'today' | 'week' | 'month' | 'all';
-type EntryType = 'all' | 'food' | 'exercise';
+const MOODS: { mood: Mood; emoji: string; label: string }[] = [
+  { mood: 'great', emoji: '😄', label: 'Great' },
+  { mood: 'good', emoji: '😊', label: 'Good' },
+  { mood: 'okay', emoji: '😐', label: 'Okay' },
+  { mood: 'low', emoji: '😞', label: 'Low' },
+  { mood: 'stressed', emoji: '😤', label: 'Stressed' },
+  { mood: 'tired', emoji: '😴', label: 'Tired' },
+];
+
+type Filter = 'today' | 'week' | 'month' | 'all' | 'custom';
+type EntryType = 'all' | 'food' | 'exercise' | 'favorites';
 type JournalEntry =
   | { type: 'food'; data: FoodLog }
   | { type: 'exercise'; data: ExerciseLog };
@@ -55,17 +79,138 @@ function formatDateHeader(dateStr: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
+function WellnessBanner({ w, onEditNote }: { w: DailyWellness; onEditNote?: () => void }) {
+  const moodColor = w.mood ? getMoodColor(w.mood) : null;
+  const moodMeta = w.mood ? MOOD_META[w.mood] : null;
+
+  if (!w.mood && w.waterCups === 0 && !w.note) return null;
+
+  return (
+    <View style={[styles.wellnessBanner, moodColor && { backgroundColor: moodColor.bg }]}>
+      {w.mood && moodColor && moodMeta && (
+        <View style={styles.wellnessMoodRow}>
+          <Text style={styles.wellnessMoodEmoji}>{moodMeta.emoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.wellnessMoodLabel, { color: moodColor.text }]}>
+              Feeling {moodMeta.label}
+            </Text>
+            <Text style={[styles.wellnessMoodQuote, { color: moodColor.text + 'CC' }]}>
+              {getMoodQuote(w.mood)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {w.waterCups > 0 && (
+        <View style={styles.wellnessWaterRow}>
+          <Text style={styles.wellnessWaterIcon}>💧</Text>
+          <Text style={styles.wellnessWaterText}>
+            {w.waterCups} of {w.waterGoal} cups
+          </Text>
+          {w.waterCups >= w.waterGoal && <Text style={styles.wellnessDone}>✅ Goal met!</Text>}
+        </View>
+      )}
+
+      {w.note ? (
+        <View style={styles.wellnessNoteRow}>
+          <Text style={styles.wellnessNoteIcon}>📝</Text>
+          <Text style={styles.wellnessNoteText} numberOfLines={2}>{w.note}</Text>
+          {onEditNote && (
+            <TouchableOpacity onPress={onEditNote} style={styles.wellnessNoteEditBtn}>
+              <Text style={styles.wellnessNoteEditText}>Edit</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : onEditNote ? (
+        <TouchableOpacity onPress={onEditNote} style={styles.wellnessAddNoteBtn}>
+          <Text style={styles.wellnessAddNoteText}>📝 Add a note for this day</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+interface DayGroupCtx {
+  wellnessMap: Record<string, DailyWellness>;
+  onDeleteFood: (id: string) => void;
+  onDeleteExercise: (id: string) => void;
+  onEditNote: (date: string) => void;
+  favoriteMealNames: Set<string>;
+  favoriteExerciseNames: Set<string>;
+  onToggleFavoriteFood: (name: string) => void;
+  onToggleFavoriteExercise: (name: string) => void;
+}
+
+function renderDayGroup(date: string, entries: JournalEntry[], ctx: DayGroupCtx) {
+  const { wellnessMap, onDeleteFood, onDeleteExercise, onEditNote,
+    favoriteMealNames, favoriteExerciseNames, onToggleFavoriteFood, onToggleFavoriteExercise } = ctx;
+  const eaten = entries.filter((e) => e.type === 'food').reduce((s, e) => s + (e.data as FoodLog).calories, 0);
+  const burned = entries.filter((e) => e.type === 'exercise').reduce((s, e) => s + (e.data as ExerciseLog).calories_burned, 0);
+  const net = eaten - burned;
+  const w = wellnessMap[date];
+  let cardIndex = 0;
+  return (
+    <View key={date}>
+      <View style={styles.dayHeader}>
+        <Text style={styles.dayLabel}>{formatDateHeader(date)}</Text>
+        <View style={styles.dayStats}>
+          {eaten > 0 && <Text style={styles.dayCaloriesEaten}>🍽️ {Math.round(eaten)}</Text>}
+          {burned > 0 && <Text style={styles.dayCaloriesBurned}>🔥 −{Math.round(burned)}</Text>}
+          <Text style={styles.dayNet}>= {Math.round(net)} cal net</Text>
+        </View>
+      </View>
+
+      {w && <WellnessBanner w={w} onEditNote={() => onEditNote(date)} />}
+
+      {entries.map((entry) =>
+        entry.type === 'food' ? (
+          <FoodLogCard
+            key={entry.data.id}
+            log={entry.data as FoodLog}
+            index={cardIndex++}
+            onDelete={onDeleteFood}
+            isFavorite={favoriteMealNames.has((entry.data as FoodLog).meal_name)}
+            onToggleFavorite={() => onToggleFavoriteFood((entry.data as FoodLog).meal_name)}
+          />
+        ) : (
+          <ExerciseLogCard
+            key={entry.data.id}
+            log={entry.data as ExerciseLog}
+            index={cardIndex++}
+            onDelete={onDeleteExercise}
+            isFavorite={favoriteExerciseNames.has((entry.data as ExerciseLog).exercise_name)}
+            onToggleFavorite={() => onToggleFavoriteExercise((entry.data as ExerciseLog).exercise_name)}
+          />
+        )
+      )}
+    </View>
+  );
+}
+
 export default function JournalScreen() {
   const { session, isGuest } = useAuthStore();
-  const { logs, isLoading: foodLoading, fetchLogs, deleteLog } = useFoodLogStore();
-  const { exerciseLogs, isLoading: exerciseLoading, fetchExerciseLogs, deleteExerciseLog } = useExerciseLogStore();
+  const { logs, isLoading: foodLoading, fetchLogs, deleteLog, addLog } = useFoodLogStore();
+  const { exerciseLogs, isLoading: exerciseLoading, fetchExerciseLogs, deleteExerciseLog, addExerciseLog } = useExerciseLogStore();
   const { isOnline } = useNetworkStatus();
 
   const [filter, setFilter] = useState<Filter>('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('all');
   const [search, setSearch] = useState('');
   const [wellnessMap, setWellnessMap] = useState<Record<string, DailyWellness>>({});
   const [waterGoalVal, setWaterGoalVal] = useState(8);
+
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [modalDate, setModalDate] = useState('');
+  const [modalNote, setModalNote] = useState('');
+  const [modalMood, setModalMood] = useState<Mood | null>(null);
+  const [modalSaving, setModalSaving] = useState(false);
+
+  const [favoriteMealNames, setFavoriteMealNames] = useState<Set<string>>(new Set());
+  const [favoriteExerciseNames, setFavoriteExerciseNames] = useState<Set<string>>(new Set());
+  const [currentTemplate, setCurrentTemplate] = useState<DayTemplate | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
 
   const isLoading = foodLoading || exerciseLoading;
 
@@ -74,6 +219,9 @@ export default function JournalScreen() {
       fetchLogs(session?.user.id, isGuest);
       fetchExerciseLogs(session?.user.id, isGuest);
       getWaterGoal().then(setWaterGoalVal);
+      getFavoriteMealNames().then((names) => setFavoriteMealNames(new Set(names)));
+      getFavoriteExerciseNames().then((names) => setFavoriteExerciseNames(new Set(names)));
+      getDayTemplate().then(setCurrentTemplate);
     }, [session?.user.id, isGuest])
   );
 
@@ -90,6 +238,9 @@ export default function JournalScreen() {
     if (filter === 'month') {
       const cutoff = new Date(now.getTime() - 30 * 86400000);
       return items.filter((l) => new Date(l.logged_at) >= cutoff);
+    }
+    if (filter === 'custom') {
+      return filterByDateRange(items, customFrom, customTo);
     }
     return items;
   };
@@ -112,12 +263,18 @@ export default function JournalScreen() {
     if (entryType === 'food') exerciseEntries = [];
     if (entryType === 'exercise') foodEntries = [];
 
-    return [...foodEntries, ...exerciseEntries].sort(
+    const combined = [...foodEntries, ...exerciseEntries];
+    if (entryType === 'favorites') {
+      return filterFavoriteEntries(combined, [...favoriteMealNames], [...favoriteExerciseNames])
+        .sort((a, b) => new Date(b.data.logged_at).getTime() - new Date(a.data.logged_at).getTime());
+    }
+
+    return combined.sort(
       (a, b) => new Date(b.data.logged_at).getTime() - new Date(a.data.logged_at).getTime()
     );
-  }, [logs, exerciseLogs, filter, entryType, search]);
+  }, [logs, exerciseLogs, filter, entryType, search, favoriteMealNames, favoriteExerciseNames, customFrom, customTo]);
 
-  // Group by date
+  // Group today's entries by date
   const grouped = useMemo(() => {
     const map: Record<string, JournalEntry[]> = {};
     allEntries.forEach((entry) => {
@@ -130,42 +287,206 @@ export default function JournalScreen() {
 
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
-  // Load water + mood for every visible date whenever the date list changes
+  // When the 'today' filter shows nothing, surface the most recent past entries
+  const recentPastEntries = useMemo(
+    () =>
+      filter === 'today' && allEntries.length === 0
+        ? getRecentPastEntries(logs, exerciseLogs, toLocalDateStr(new Date()), entryType)
+        : [],
+    [filter, allEntries.length, logs, exerciseLogs, entryType],
+  );
+
+  const recentPastGrouped = useMemo(
+    () => groupEntriesByDate(recentPastEntries),
+    [recentPastEntries],
+  );
+
+  const recentPastSortedDates = Object.keys(recentPastGrouped).sort((a, b) => b.localeCompare(a));
+
+  // Load water + mood + note for every visible date; always include today when on Today filter
+  const todayStr = toLocalDateStr(new Date());
+  const wellnessDates = useMemo(() => {
+    const base = sortedDates.length > 0 ? sortedDates : recentPastSortedDates;
+    if (filter === 'today' && !base.includes(todayStr)) return [todayStr, ...base];
+    return base;
+  }, [sortedDates.join(','), recentPastSortedDates.join(','), filter, todayStr]);
+
   useEffect(() => {
-    if (sortedDates.length === 0) return;
+    if (wellnessDates.length === 0) return;
     let cancelled = false;
     const goal = waterGoalVal;
     Promise.all(
-      sortedDates.map(async (date) => {
-        const [cups, mood] = await Promise.all([getWaterCups(date), getMood(date)]);
-        return { date, cups, mood };
+      wellnessDates.map(async (date) => {
+        const [cups, mood, note] = await Promise.all([getWaterCups(date), getMood(date), getDailyNote(date)]);
+        return { date, cups, mood, note };
       })
     ).then((results) => {
       if (cancelled) return;
       const map: Record<string, DailyWellness> = {};
-      results.forEach(({ date, cups, mood }) => {
-        map[date] = { waterCups: cups, waterGoal: goal, mood };
+      results.forEach(({ date, cups, mood, note }) => {
+        map[date] = { waterCups: cups, waterGoal: goal, mood, note };
       });
       setWellnessMap(map);
     });
     return () => { cancelled = true; };
-  }, [sortedDates.join(','), waterGoalVal]);
+  }, [wellnessDates.join(','), waterGoalVal]);
 
   const handleDeleteFood = (id: string) => deleteLog(id, session?.user.id, isGuest);
   const handleDeleteExercise = (id: string) => deleteExerciseLog(id, session?.user.id, isGuest);
 
+  const handleToggleFavoriteFood = async (mealName: string) => {
+    const isNow = await toggleFavoriteMeal(mealName);
+    setFavoriteMealNames((prev) => {
+      const next = new Set(prev);
+      isNow ? next.add(mealName) : next.delete(mealName);
+      return next;
+    });
+  };
+
+  const handleToggleFavoriteExercise = async (exerciseName: string) => {
+    const isNow = await toggleFavoriteExercise(exerciseName);
+    setFavoriteExerciseNames((prev) => {
+      const next = new Set(prev);
+      isNow ? next.add(exerciseName) : next.delete(exerciseName);
+      return next;
+    });
+  };
+
+  const handleRepeatYesterday = () => {
+    const yesterday = toLocalDateStr(new Date(Date.now() - 86400000));
+    const yFoods = logs.filter((l) => toLocalDateStr(new Date(l.logged_at)) === yesterday);
+    const yExercises = exerciseLogs.filter((l) => toLocalDateStr(new Date(l.logged_at)) === yesterday);
+    if (yFoods.length === 0 && yExercises.length === 0) {
+      Alert.alert('Nothing to Copy', 'No meals or exercises were logged yesterday.');
+      return;
+    }
+    const parts: string[] = [];
+    if (yFoods.length) parts.push(`${yFoods.length} meal${yFoods.length > 1 ? 's' : ''}`);
+    if (yExercises.length) parts.push(`${yExercises.length} exercise${yExercises.length > 1 ? 's' : ''}`);
+    Alert.alert('Repeat Yesterday', `Copy ${parts.join(' and ')} from yesterday to today?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Copy',
+        onPress: async () => {
+          const now = new Date().toISOString();
+          try {
+            await Promise.all([
+              ...yFoods.map((f) => addLog({ user_id: session?.user.id, meal_name: f.meal_name,
+                foods_detected: f.foods_detected, calories: f.calories, protein_g: f.protein_g,
+                carbs_g: f.carbs_g, fat_g: f.fat_g, fiber_g: f.fiber_g, sugar_g: f.sugar_g,
+                sodium_mg: f.sodium_mg, cholesterol_mg: f.cholesterol_mg, saturated_fat_g: f.saturated_fat_g,
+                notes: f.notes, logged_at: now }, session?.user.id, isGuest)),
+              ...yExercises.map((e) => addExerciseLog({ user_id: session?.user.id,
+                exercise_name: e.exercise_name, exercise_emoji: e.exercise_emoji,
+                duration_minutes: e.duration_minutes, calories_burned: e.calories_burned,
+                felt: e.felt, notes: e.notes, logged_at: now }, session?.user.id, isGuest)),
+            ]);
+          } catch { Alert.alert('Error', 'Failed to copy. Please try again.'); }
+        },
+      },
+    ]);
+  };
+
+  const handleSaveTemplate = async () => {
+    const tStr = toLocalDateStr(new Date());
+    const tFoods = logs.filter((l) => toLocalDateStr(new Date(l.logged_at)) === tStr);
+    const tExercises = exerciseLogs.filter((l) => toLocalDateStr(new Date(l.logged_at)) === tStr);
+    if (tFoods.length === 0 && tExercises.length === 0) {
+      Alert.alert('Nothing to Save', 'Log some meals or exercises today first.');
+      return;
+    }
+    const tmpl: DayTemplate = {
+      savedAt: new Date().toISOString(),
+      sourceDate: tStr,
+      foods: tFoods.map((f): DayTemplateFood => ({ meal_name: f.meal_name, foods_detected: f.foods_detected,
+        calories: f.calories, protein_g: f.protein_g, carbs_g: f.carbs_g, fat_g: f.fat_g,
+        fiber_g: f.fiber_g, sugar_g: f.sugar_g, sodium_mg: f.sodium_mg,
+        cholesterol_mg: f.cholesterol_mg, saturated_fat_g: f.saturated_fat_g, notes: f.notes })),
+      exercises: tExercises.map((e): DayTemplateExercise => ({ exercise_name: e.exercise_name,
+        exercise_emoji: e.exercise_emoji, duration_minutes: e.duration_minutes,
+        calories_burned: e.calories_burned, felt: e.felt, notes: e.notes })),
+    };
+    await saveDayTemplate(tmpl);
+    setCurrentTemplate(tmpl);
+    Alert.alert('Template Saved! 💾', 'Tap "Apply Template" on any future day to reuse it.');
+  };
+
+  const handleApplyTemplate = () => {
+    if (!currentTemplate) return;
+    const parts: string[] = [];
+    if (currentTemplate.foods.length) parts.push(`${currentTemplate.foods.length} meal${currentTemplate.foods.length > 1 ? 's' : ''}`);
+    if (currentTemplate.exercises.length) parts.push(`${currentTemplate.exercises.length} exercise${currentTemplate.exercises.length > 1 ? 's' : ''}`);
+    Alert.alert('Apply Template', `Add ${parts.join(' and ')} from your saved template to today?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Apply',
+        onPress: async () => {
+          setApplyingTemplate(true);
+          const now = new Date().toISOString();
+          try {
+            await Promise.all([
+              ...currentTemplate.foods.map((f) => addLog({ user_id: session?.user.id, ...f, logged_at: now }, session?.user.id, isGuest)),
+              ...currentTemplate.exercises.map((e) => addExerciseLog({ user_id: session?.user.id, ...e, logged_at: now }, session?.user.id, isGuest)),
+            ]);
+          } catch { Alert.alert('Error', 'Failed to apply template. Please try again.'); }
+          finally { setApplyingTemplate(false); }
+        },
+      },
+    ]);
+  };
+
+  const handleOpenNote = useCallback((date: string) => {
+    setModalDate(date);
+    const w = wellnessMap[date];
+    setModalNote(w?.note ?? '');
+    setModalMood(w?.mood ?? null);
+    setShowNoteModal(true);
+  }, [wellnessMap]);
+
+  const handleSaveNote = async () => {
+    setModalSaving(true);
+    try {
+      await setDailyNote(modalDate, modalNote);
+      if (modalMood) await setMood(modalDate, modalMood);
+      setWellnessMap((prev) => ({
+        ...prev,
+        [modalDate]: {
+          ...(prev[modalDate] ?? { waterCups: 0, waterGoal: waterGoalVal }),
+          mood: modalMood,
+          note: modalNote.trim() || null,
+        },
+      }));
+      setShowNoteModal(false);
+    } finally {
+      setModalSaving(false);
+    }
+  };
+
   const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'today', label: 'Today' },
-    { key: 'week', label: 'This Week' },
-    { key: 'month', label: 'This Month' },
-    { key: 'all', label: 'All Time' },
+    { key: 'today',  label: 'Today' },
+    { key: 'week',   label: 'This Week' },
+    { key: 'month',  label: 'This Month' },
+    { key: 'all',    label: 'All Time' },
+    { key: 'custom', label: '📅 Custom' },
   ];
 
   const TYPE_FILTERS: { key: EntryType; label: string; emoji: string }[] = [
-    { key: 'all', label: 'All', emoji: '📋' },
-    { key: 'food', label: 'Meals', emoji: '🍽️' },
-    { key: 'exercise', label: 'Exercise', emoji: '🏃' },
+    { key: 'all',       label: 'All',       emoji: '📋' },
+    { key: 'food',      label: 'Meals',     emoji: '🍽️' },
+    { key: 'exercise',  label: 'Exercise',  emoji: '🏃' },
+    { key: 'favorites', label: 'Favorites', emoji: '⭐' },
   ];
+
+  const dayCtx: DayGroupCtx = {
+    wellnessMap,
+    onDeleteFood: handleDeleteFood,
+    onDeleteExercise: handleDeleteExercise,
+    onEditNote: handleOpenNote,
+    favoriteMealNames,
+    favoriteExerciseNames,
+    onToggleFavoriteFood: handleToggleFavoriteFood,
+    onToggleFavoriteExercise: handleToggleFavoriteExercise,
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -175,13 +496,22 @@ export default function JournalScreen() {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>📓 Journal</Text>
-          <TouchableOpacity
-            style={styles.addExerciseBtn}
-            onPress={() => router.push('/log-exercise')}
-          >
-            <Ionicons name="fitness-outline" size={18} color={Colors.secondary} />
-            <Text style={styles.addExerciseText}>Log Exercise</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.noteBtn}
+              onPress={() => handleOpenNote(todayStr)}
+            >
+              <Ionicons name="journal-outline" size={16} color={Colors.primary} />
+              <Text style={styles.noteBtnText}>Notes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addExerciseBtn}
+              onPress={() => router.push('/log-exercise')}
+            >
+              <Ionicons name="fitness-outline" size={18} color={Colors.secondary} />
+              <Text style={styles.addExerciseText}>Log Exercise</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.searchBar}>
@@ -235,9 +565,86 @@ export default function JournalScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Custom date range inputs — shown only when Custom filter is active */}
+        {filter === 'custom' && (
+          <View style={styles.customDateRow}>
+            <View style={styles.customDateField}>
+              <Text style={styles.customDateLabel}>From</Text>
+              <TextInput
+                style={styles.customDateInput}
+                value={customFrom}
+                onChangeText={setCustomFrom}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={Colors.textMuted}
+                maxLength={10}
+                keyboardType="numbers-and-punctuation"
+                accessibilityLabel="Filter from date"
+              />
+            </View>
+            <Text style={styles.customDateArrow}>→</Text>
+            <View style={styles.customDateField}>
+              <Text style={styles.customDateLabel}>To</Text>
+              <TextInput
+                style={styles.customDateInput}
+                value={customTo}
+                onChangeText={setCustomTo}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={Colors.textMuted}
+                maxLength={10}
+                keyboardType="numbers-and-punctuation"
+                accessibilityLabel="Filter to date"
+              />
+            </View>
+            {(customFrom || customTo) && (
+              <TouchableOpacity
+                onPress={() => { setCustomFrom(''); setCustomTo(''); }}
+                accessibilityLabel="Clear date filter"
+                style={styles.customDateClearBtn}
+              >
+                <Ionicons name="close-circle" size={20} color={Colors.textLight} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
+      {/* Quick Fill row — only shown on Today filter */}
+      {filter === 'today' && (
+        <View style={styles.quickFillRow}>
+          <TouchableOpacity style={styles.quickFillBtn} onPress={handleRepeatYesterday}>
+            <Ionicons name="refresh-outline" size={14} color={Colors.secondary} />
+            <Text style={styles.quickFillText}>Repeat Yesterday</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickFillBtn, currentTemplate && styles.quickFillBtnAlt]}
+            onPress={currentTemplate ? handleApplyTemplate : handleSaveTemplate}
+            disabled={applyingTemplate}
+          >
+            <Ionicons
+              name={currentTemplate ? 'clipboard-outline' : 'save-outline'}
+              size={14}
+              color={currentTemplate ? Colors.primary : Colors.textLight}
+            />
+            <Text style={[styles.quickFillText, currentTemplate && { color: Colors.primary }]}>
+              {currentTemplate ? 'Apply Saved Template' : 'Save Today as Template'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Today's wellness banner — always shown when on Today filter */}
+        {filter === 'today' && wellnessMap[todayStr] && (
+          <Animated.View entering={FadeInDown.springify()} style={styles.todayWellnessSection}>
+            <Text style={styles.todayWellnessSectionLabel}>TODAY</Text>
+            <WellnessBanner
+              w={wellnessMap[todayStr]}
+              onEditNote={() => handleOpenNote(todayStr)}
+            />
+          </Animated.View>
+        )}
+
         {isLoading ? (
           <>
             <SkeletonCard />
@@ -245,93 +652,96 @@ export default function JournalScreen() {
             <SkeletonCard />
           </>
         ) : allEntries.length === 0 ? (
-          <Animated.View entering={FadeInDown.springify()} style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📷</Text>
-            <Text style={styles.emptyTitle}>Nothing logged yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Snap a meal or log a workout to get started!
-            </Text>
-          </Animated.View>
-        ) : (
-          sortedDates.map((date) => {
-            const dayEntries = grouped[date];
-            const dayCaloriesEaten = dayEntries
-              .filter((e) => e.type === 'food')
-              .reduce((s, e) => s + (e.data as FoodLog).calories, 0);
-            const dayCaloriesBurned = dayEntries
-              .filter((e) => e.type === 'exercise')
-              .reduce((s, e) => s + (e.data as ExerciseLog).calories_burned, 0);
-            const netCalories = dayCaloriesEaten - dayCaloriesBurned;
+          <>
+            <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>📷</Text>
+              <Text style={styles.emptyTitle}>
+                {filter === 'today' ? 'Nothing logged yet today' : 'Nothing logged yet'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                Snap a meal or log a workout to get started!
+              </Text>
+            </Animated.View>
 
-            let cardIndex = 0;
-            return (
-              <View key={date}>
-                <View style={styles.dayHeader}>
-                  <Text style={styles.dayLabel}>{formatDateHeader(date)}</Text>
-                  <View style={styles.dayStats}>
-                    {dayCaloriesEaten > 0 && (
-                      <Text style={styles.dayCaloriesEaten}>
-                        🍽️ {Math.round(dayCaloriesEaten)}
-                      </Text>
-                    )}
-                    {dayCaloriesBurned > 0 && (
-                      <Text style={styles.dayCaloriesBurned}>
-                        🔥 −{Math.round(dayCaloriesBurned)}
-                      </Text>
-                    )}
-                    <Text style={styles.dayNet}>= {Math.round(netCalories)} cal net</Text>
-                  </View>
+            {recentPastSortedDates.length > 0 && (
+              <Animated.View entering={FadeInDown.delay(120).springify()}>
+                <View style={styles.recentPastHeader}>
+                  <Text style={styles.recentPastLabel}>Recent Activity</Text>
                 </View>
-
-                {/* Daily wellness summary — water + mood */}
-                {(() => {
-                  const w = wellnessMap[date];
-                  if (!w || (w.waterCups === 0 && !w.mood)) return null;
-                  return (
-                    <View style={styles.wellnessCard}>
-                      {w.waterCups > 0 && (
-                        <View style={styles.wellnessPill}>
-                          <Text style={styles.wellnessEmoji}>💧</Text>
-                          <Text style={styles.wellnessText}>
-                            {w.waterCups}/{w.waterGoal} cups
-                          </Text>
-                          {w.waterCups >= w.waterGoal && (
-                            <Text style={styles.wellnessDone}>✅</Text>
-                          )}
-                        </View>
-                      )}
-                      {w.mood && (
-                        <View style={styles.wellnessPill}>
-                          <Text style={styles.wellnessEmoji}>{MOOD_META[w.mood].emoji}</Text>
-                          <Text style={styles.wellnessText}>{MOOD_META[w.mood].label}</Text>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })()}
-
-                {dayEntries.map((entry) =>
-                  entry.type === 'food' ? (
-                    <FoodLogCard
-                      key={entry.data.id}
-                      log={entry.data as FoodLog}
-                      index={cardIndex++}
-                      onDelete={handleDeleteFood}
-                    />
-                  ) : (
-                    <ExerciseLogCard
-                      key={entry.data.id}
-                      log={entry.data as ExerciseLog}
-                      index={cardIndex++}
-                      onDelete={handleDeleteExercise}
-                    />
-                  )
+                {recentPastSortedDates.map((date) =>
+                  renderDayGroup(date, recentPastGrouped[date], dayCtx)
                 )}
-              </View>
-            );
-          })
+              </Animated.View>
+            )}
+          </>
+        ) : (
+          sortedDates.map((date) =>
+            renderDayGroup(date, grouped[date], dayCtx)
+          )
         )}
       </ScrollView>
+
+      {/* Journal notes + mood modal */}
+      <Modal
+        visible={showNoteModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowNoteModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: Colors.background }}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowNoteModal(false)} style={styles.modalCancelBtn}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              {modalDate === todayStr ? '📝 Today\'s Notes' : `📝 ${formatDateHeader(modalDate)}`}
+            </Text>
+            <TouchableOpacity onPress={handleSaveNote} disabled={modalSaving} style={styles.modalSaveBtn}>
+              <Text style={[styles.modalSaveText, modalSaving && { opacity: 0.5 }]}>Save</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+            <Text style={styles.modalSectionLabel}>How are you feeling?</Text>
+            <View style={styles.modalMoodGrid}>
+              {MOODS.map(({ mood, emoji, label }) => {
+                const mc = getMoodColor(mood);
+                const active = modalMood === mood;
+                return (
+                  <TouchableOpacity
+                    key={mood}
+                    style={[styles.modalMoodBtn, active && { backgroundColor: mc.bg, borderColor: mc.border }]}
+                    onPress={() => setModalMood(active ? null : mood)}
+                  >
+                    <Text style={styles.modalMoodEmoji}>{emoji}</Text>
+                    <Text style={[styles.modalMoodLabel, active && { color: mc.text, fontFamily: 'Nunito_700Bold' }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.modalSectionLabel, { marginTop: 20 }]}>Your notes for this day</Text>
+            <Text style={styles.modalNoteHint}>
+              How did you feel after eating? Any wins or setbacks? What did you learn?
+            </Text>
+            <TextInput
+              style={styles.modalNoteInput}
+              value={modalNote}
+              onChangeText={setModalNote}
+              placeholder="Write anything on your mind — meals, energy, mood, goals…"
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              numberOfLines={6}
+              textAlignVertical="top"
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -473,4 +883,260 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   wellnessDone: { fontSize: 12 },
+  recentPastHeader: {
+    marginTop: 28,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1.5,
+    borderBottomColor: Colors.border,
+  },
+  recentPastLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+
+  // Header actions row
+  headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  noteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '55',
+  },
+  noteBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.primary },
+
+  customDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  customDateField: { flex: 1 },
+  customDateLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: Colors.textLight,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  customDateInput: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 14,
+    color: Colors.text,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: Colors.surface,
+  },
+  customDateArrow: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.textLight,
+    marginTop: 18,
+  },
+  customDateClearBtn: { marginTop: 18 },
+  quickFillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  quickFillBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  quickFillBtnAlt: {
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.primary + '08',
+  },
+  quickFillText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: Colors.textLight,
+  },
+  // Today wellness section
+  todayWellnessSection: { marginBottom: 4 },
+  todayWellnessSectionLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+
+  // Wellness banner (non-button, mood-colored info display)
+  wellnessBanner: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    gap: 10,
+  },
+  wellnessMoodRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  wellnessMoodEmoji: { fontSize: 28, lineHeight: 32 },
+  wellnessMoodLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 15,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  wellnessMoodQuote: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.textLight,
+    lineHeight: 17,
+    fontStyle: 'italic',
+  },
+  wellnessWaterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  wellnessWaterIcon: { fontSize: 15 },
+  wellnessWaterText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.text,
+    flex: 1,
+  },
+  wellnessDone: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.success,
+  },
+  wellnessNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  wellnessNoteIcon: { fontSize: 13, marginTop: 1 },
+  wellnessNoteText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 13,
+    color: Colors.text,
+    lineHeight: 18,
+    flex: 1,
+  },
+  wellnessNoteEditBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 8,
+  },
+  wellnessNoteEditText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: Colors.primary,
+  },
+  wellnessAddNoteBtn: {
+    paddingVertical: 4,
+  },
+  wellnessAddNoteText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+  },
+
+  // Notes modal
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  modalCancelBtn: { minWidth: 60 },
+  modalCancelText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 15,
+    color: Colors.textLight,
+  },
+  modalTitle: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.text,
+  },
+  modalSaveBtn: { minWidth: 60, alignItems: 'flex-end' },
+  modalSaveText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 15,
+    color: Colors.primary,
+  },
+  modalContent: { padding: 16, paddingBottom: 40 },
+  modalSectionLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: 10,
+  },
+  modalMoodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  modalMoodBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    minWidth: '30%',
+    flex: 1,
+  },
+  modalMoodEmoji: { fontSize: 24, marginBottom: 4 },
+  modalMoodLabel: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 11,
+    color: Colors.textLight,
+  },
+  modalNoteHint: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.textLight,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  modalNoteInput: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 15,
+    color: Colors.text,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    padding: 14,
+    minHeight: 160,
+    backgroundColor: Colors.surface,
+    lineHeight: 22,
+  },
 });

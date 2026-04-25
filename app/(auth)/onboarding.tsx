@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
   unitBtnTextActive: { color: Colors.textWhite },
   navButtons: { flexDirection: 'row', gap: 12, marginTop: 32, marginBottom: 16 },
   navBtn: { flex: 1 },
-  backBtn: { paddingHorizontal: 8 },
+  backBtn: { minWidth: 96, maxWidth: 120 },
   skip: {
     fontFamily: 'Nunito_400Regular',
     fontSize: 14,

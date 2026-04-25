@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,10 +15,12 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from '../lib/haptics';
 import { useAuthStore } from '../store/authStore';
 import { useExerciseLogStore } from '../store/exerciseLogStore';
-import { EXERCISE_PRESETS } from '../types';
+import { supabase } from '../lib/supabase';
+import { EXERCISE_PRESETS, ExerciseFelt } from '../types';
 import { Button } from '../components/ui/Button';
 import { Colors } from '../constants/Colors';
 
@@ -31,6 +34,9 @@ export default function LogExerciseScreen() {
   const [duration, setDuration] = useState('30');
   const [calories, setCalories] = useState('');
   const [notes, setNotes] = useState('');
+  const [felt, setFelt] = useState<ExerciseFelt | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const adjustDuration = (delta: number) => {
@@ -51,6 +57,20 @@ export default function LogExerciseScreen() {
     setCalories(String(Math.round(preset.cal_per_min * mins)));
   };
 
+  const handlePickPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setPhotoUri(result.assets[0].uri);
+      setPhotoBase64(result.assets[0].base64);
+    }
+  };
+
   const handleLog = async () => {
     if (!exerciseName.trim()) {
       Alert.alert('Missing Info', 'Please select or enter an exercise.');
@@ -65,6 +85,29 @@ export default function LogExerciseScreen() {
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+    // Photo upload is best-effort — failure must not block the exercise save
+    let photoUrl: string | undefined;
+    if (photoUri && !isGuest && session && photoBase64) {
+      try {
+        const logId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const fileName = `exercise-photos/${session.user.id}/${logId}.jpg`;
+        const binary = atob(photoBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const { error: uploadError } = await supabase.storage
+          .from('meal-photos')
+          .upload(fileName, bytes.buffer, { contentType: 'image/jpeg', upsert: false });
+        if (!uploadError) {
+          const { data } = supabase.storage.from('meal-photos').getPublicUrl(fileName);
+          photoUrl = data.publicUrl;
+        }
+      } catch {
+        // Exercise saves without photo if upload fails
+      }
+    } else if (photoUri && isGuest) {
+      photoUrl = photoUri;
+    }
+
     try {
       await addExerciseLog(
         {
@@ -73,6 +116,8 @@ export default function LogExerciseScreen() {
           exercise_emoji: exerciseEmoji,
           duration_minutes: parseInt(duration) || 0,
           calories_burned: cal,
+          felt: felt ?? undefined,
+          photo_url: photoUrl,
           notes: notes.trim() || undefined,
           logged_at: new Date().toISOString(),
         },
@@ -240,6 +285,28 @@ export default function LogExerciseScreen() {
             </View>
           </Animated.View>
 
+          <Animated.View entering={FadeInDown.delay(225).springify()} style={styles.card}>
+            <Text style={styles.sectionLabel}>How did it feel? (optional)</Text>
+            <View style={styles.feltGrid}>
+              {([
+                { value: 'easy',       emoji: '😌', label: 'Easy' },
+                { value: 'good',       emoji: '💪', label: 'Good' },
+                { value: 'hard',       emoji: '😤', label: 'Hard' },
+                { value: 'exhausting', emoji: '😵', label: 'Exhausting' },
+              ] as { value: ExerciseFelt; emoji: string; label: string }[]).map(({ value, emoji, label }) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.feltBtn, felt === value && styles.feltBtnActive]}
+                  onPress={() => setFelt(felt === value ? null : value)}
+                  testID={`felt-btn-${value}`}
+                >
+                  <Text style={styles.feltEmoji}>{emoji}</Text>
+                  <Text style={[styles.feltLabel, felt === value && styles.feltLabelActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
+
           <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.card}>
             <Text style={styles.sectionLabel}>Notes (optional)</Text>
             <TextInput
@@ -251,6 +318,33 @@ export default function LogExerciseScreen() {
               multiline
               numberOfLines={2}
             />
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(275).springify()} style={styles.card}>
+            <Text style={styles.sectionLabel}>Photo (optional)</Text>
+            {photoUri ? (
+              <View style={styles.photoPreviewContainer}>
+                <Image source={{ uri: photoUri }} style={styles.photoPreview} accessibilityLabel="Exercise photo preview" />
+                <View style={styles.photoPreviewActions}>
+                  <TouchableOpacity style={styles.photoActionBtn} onPress={handlePickPhoto}>
+                    <Ionicons name="swap-horizontal-outline" size={16} color={Colors.secondary} />
+                    <Text style={styles.photoActionText}>Replace</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.photoActionBtn, styles.photoRemoveBtn]}
+                    onPress={() => { setPhotoUri(null); setPhotoBase64(null); }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                    <Text style={[styles.photoActionText, { color: Colors.error }]}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.photoPickerBtn} onPress={handlePickPhoto}>
+                <Ionicons name="image-outline" size={24} color={Colors.secondary} />
+                <Text style={styles.photoPickerText}>Add a photo of your workout</Text>
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.buttons}>
@@ -489,5 +583,65 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     minHeight: 70,
   },
+  feltGrid: { flexDirection: 'row', gap: 8 },
+  feltBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  feltBtnActive: { borderColor: Colors.secondary, backgroundColor: Colors.secondary + '18' },
+  feltEmoji: { fontSize: 22, marginBottom: 4 },
+  feltLabel: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, textAlign: 'center' },
+  feltLabelActive: { fontFamily: 'Nunito_700Bold', color: Colors.secondary },
   buttons: { gap: 10, marginTop: 8 },
+  photoPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary + '66',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 20,
+    backgroundColor: Colors.secondary + '08',
+  },
+  photoPickerText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.secondary,
+  },
+  photoPreviewContainer: { gap: 10 },
+  photoPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: Colors.border,
+  },
+  photoPreviewActions: { flexDirection: 'row', gap: 10 },
+  photoActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary + '55',
+    backgroundColor: Colors.secondary + '10',
+  },
+  photoRemoveBtn: {
+    borderColor: Colors.error + '55',
+    backgroundColor: Colors.error + '08',
+  },
+  photoActionText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.secondary,
+  },
 });

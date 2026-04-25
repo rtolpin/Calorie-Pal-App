@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ExerciseLog, FoodLog, UserProfile } from '../types';
+import { DayTemplate, ExerciseLog, FoodLog, UserProfile } from '../types';
 
 const KEYS = {
   GUEST_LOGS: 'guest_food_logs',
@@ -126,4 +126,66 @@ export async function getMood(date: string): Promise<Mood | null> {
 
 export async function setMood(date: string, mood: Mood): Promise<void> {
   await AsyncStorage.setItem(`mood_${date}`, mood);
+}
+
+// Daily journal notes (keyed by date)
+export async function getDailyNote(date: string): Promise<string | null> {
+  const raw = await AsyncStorage.getItem(`daily_note_${date}`);
+  return raw || null;
+}
+
+export async function setDailyNote(date: string, note: string): Promise<void> {
+  if (note.trim()) {
+    await AsyncStorage.setItem(`daily_note_${date}`, note);
+  } else {
+    await AsyncStorage.removeItem(`daily_note_${date}`);
+  }
+}
+
+// ── Favorites (stored as arrays of names, not IDs, so they survive log deletion) ──
+
+const FAVORITE_MEALS_KEY = 'favorite_meal_names';
+const FAVORITE_EXERCISES_KEY = 'favorite_exercise_names';
+
+export async function getFavoriteMealNames(): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(FAVORITE_MEALS_KEY);
+  return raw ? (JSON.parse(raw) as string[]) : [];
+}
+
+export async function toggleFavoriteMeal(name: string): Promise<boolean> {
+  const current = await getFavoriteMealNames();
+  const isFav = current.includes(name);
+  const updated = isFav ? current.filter((n) => n !== name) : [...current, name];
+  await AsyncStorage.setItem(FAVORITE_MEALS_KEY, JSON.stringify(updated));
+  return !isFav;
+}
+
+export async function getFavoriteExerciseNames(): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(FAVORITE_EXERCISES_KEY);
+  return raw ? (JSON.parse(raw) as string[]) : [];
+}
+
+export async function toggleFavoriteExercise(name: string): Promise<boolean> {
+  const current = await getFavoriteExerciseNames();
+  const isFav = current.includes(name);
+  const updated = isFav ? current.filter((n) => n !== name) : [...current, name];
+  await AsyncStorage.setItem(FAVORITE_EXERCISES_KEY, JSON.stringify(updated));
+  return !isFav;
+}
+
+// ── Day template (one saved template at a time) ───────────────────────────────
+
+const DAY_TEMPLATE_KEY = 'day_template';
+
+export async function saveDayTemplate(template: DayTemplate): Promise<void> {
+  await AsyncStorage.setItem(DAY_TEMPLATE_KEY, JSON.stringify(template));
+}
+
+export async function getDayTemplate(): Promise<DayTemplate | null> {
+  const raw = await AsyncStorage.getItem(DAY_TEMPLATE_KEY);
+  return raw ? (JSON.parse(raw) as DayTemplate) : null;
+}
+
+export async function clearDayTemplate(): Promise<void> {
+  await AsyncStorage.removeItem(DAY_TEMPLATE_KEY);
 }

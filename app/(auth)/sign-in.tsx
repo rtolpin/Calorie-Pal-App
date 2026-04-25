@@ -80,7 +80,12 @@ export default function SignInScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity onPress={() => router.back()} style={styles.back}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.back}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
 

@@ -166,7 +166,12 @@ export default function EditEntryScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.topRow}>
-            <TouchableOpacity onPress={handleCancel} style={styles.backBtn}>
+            <TouchableOpacity
+              onPress={handleCancel}
+              style={styles.backBtn}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+            >
               <Ionicons name="arrow-back" size={24} color={Colors.text} />
             </TouchableOpacity>
             <Text style={styles.screenTitle}>✏️ Edit Entry</Text>
@@ -175,8 +180,8 @@ export default function EditEntryScreen() {
 
           {photoUri ? (
             <Animated.View entering={FadeInDown.springify()}>
-              <TouchableOpacity onPress={handleReplacePhoto}>
-                <Image source={{ uri: photoUri }} style={styles.photo} />
+              <TouchableOpacity onPress={handleReplacePhoto} accessibilityLabel="Meal photo — tap to replace">
+                <Image source={{ uri: photoUri }} style={styles.photo} accessibilityLabel="Meal photo" />
                 <View style={styles.photoOverlay}>
                   <Ionicons name="camera" size={20} color={Colors.textWhite} />
                   <Text style={styles.photoOverlayText}>Replace Photo</Text>
