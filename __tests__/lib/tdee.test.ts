@@ -1,5 +1,55 @@
 import { calculateTDEE, calculateDailyCalorieTarget, calculateMacroGrams, WEIGHT_LOSS_DEFICITS } from '../../lib/tdee';
 
+// ─── Gender-based calculateDailyCalorieTarget ─────────────────────────────────
+
+describe('calculateDailyCalorieTarget — gender', () => {
+  const baseArgs = [70, 175, 30, 'active' as const, 'maintain' as const] as const;
+
+  it('male target is higher than female target given same stats', () => {
+    const male   = calculateDailyCalorieTarget(...baseArgs, 1, 'male');
+    const female = calculateDailyCalorieTarget(...baseArgs, 1, 'female');
+    expect(male).toBeGreaterThan(female);
+  });
+
+  it('"other" target is between male and female', () => {
+    const male   = calculateDailyCalorieTarget(...baseArgs, 1, 'male');
+    const female = calculateDailyCalorieTarget(...baseArgs, 1, 'female');
+    const other  = calculateDailyCalorieTarget(...baseArgs, 1, 'other');
+    expect(other).toBeGreaterThan(female);
+    expect(other).toBeLessThan(male);
+  });
+
+  it('defaults to female formula when gender is omitted (backward compatibility)', () => {
+    const withDefault = calculateDailyCalorieTarget(...baseArgs);
+    const explicit    = calculateDailyCalorieTarget(...baseArgs, 1, 'female');
+    expect(withDefault).toBe(explicit);
+  });
+
+  it('male weight-loss target still respects the 1-lb/week deficit', () => {
+    const maintain = calculateDailyCalorieTarget(...baseArgs, 1, 'male');
+    const lose     = calculateDailyCalorieTarget(70, 175, 30, 'active', 'lose_weight', 1, 'male');
+    expect(maintain - lose).toBe(500);
+  });
+
+  it('female muscle-gain target is 300 cal above female maintain', () => {
+    const maintain = calculateDailyCalorieTarget(60, 165, 25, 'active', 'maintain', 1, 'female');
+    const gain     = calculateDailyCalorieTarget(60, 165, 25, 'active', 'gain_muscle', 1, 'female');
+    expect(gain - maintain).toBe(300);
+  });
+
+  it('clamps to 1200 minimum for male too', () => {
+    expect(
+      calculateDailyCalorieTarget(35, 140, 18, 'sedentary', 'lose_weight', 2, 'male')
+    ).toBeGreaterThanOrEqual(1200);
+  });
+
+  it('clamps to 4000 maximum for male too', () => {
+    expect(
+      calculateDailyCalorieTarget(200, 220, 25, 'very_active', 'gain_muscle', 1, 'male')
+    ).toBeLessThanOrEqual(4000);
+  });
+});
+
 describe('calculateTDEE', () => {
   it('calculates male BMR with sedentary activity', () => {
     // BMR = 10*70 + 6.25*175 - 5*30 + 5 = 1648.75 → TDEE = 1648.75 * 1.2 = 1978.5 → 1979

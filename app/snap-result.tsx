@@ -234,7 +234,7 @@ export default function SnapResultScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.topRow}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close and go back">
               <Ionicons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
             <Text style={styles.screenTitle}>
@@ -313,6 +313,8 @@ export default function SnapResultScreen() {
                       confirmedFoods.includes(food) ? styles.foodTagActive : styles.foodTagInactive,
                     ]}
                     onPress={() => toggleFood(food)}
+                    accessibilityRole="button"
+                    accessibilityLabel={confirmedFoods.includes(food) ? `Remove ${food}` : `Add back ${food}`}
                   >
                     <Text style={[
                       styles.foodTagText,

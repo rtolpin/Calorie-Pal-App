@@ -261,6 +261,21 @@ describe('updateLog', () => {
       expect(useFoodLogStore.getState().logs[0].calories).toBe(999);
     });
 
+    it('does NOT include updated_at in the Supabase update payload (would break if column missing)', async () => {
+      useFoodLogStore.setState({ logs: [DB_LOG] });
+      let capturedPayload: any;
+      mockUpdate.mockImplementationOnce((payload: any) => {
+        capturedPayload = payload;
+        return { eq: () => ({ eq: () => Promise.resolve({ error: null }) }) };
+      });
+
+      await act(async () => {
+        await useFoodLogStore.getState().updateLog('db-id-1', { calories: 999 }, 'user-1', false);
+      });
+
+      expect(capturedPayload).not.toHaveProperty('updated_at');
+    });
+
     it('throws on Supabase error', async () => {
       useFoodLogStore.setState({ logs: [DB_LOG] });
       mockUpdate.mockReturnValueOnce({
@@ -271,6 +286,54 @@ describe('updateLog', () => {
         useFoodLogStore.getState().updateLog('db-id-1', { calories: 999 }, 'user-1', false)
       ).rejects.toEqual({ message: 'Update failed' });
     });
+
+    it('still updates local state when Supabase throws (state stays consistent)', async () => {
+      useFoodLogStore.setState({ logs: [DB_LOG] });
+      mockUpdate.mockReturnValueOnce({
+        eq: () => ({ eq: () => Promise.resolve({ error: { message: 'Error' } }) }),
+      });
+
+      try {
+        await useFoodLogStore.getState().updateLog('db-id-1', { calories: 999 }, 'user-1', false);
+      } catch {}
+
+      // State should NOT have been updated since we threw before the set()
+      expect(useFoodLogStore.getState().logs[0].calories).toBe(450);
+    });
+  });
+});
+
+describe('addLog — insert payload', () => {
+  it('does not include photo_url in the insert when it is undefined', async () => {
+    let capturedPayload: any;
+    mockInsert.mockImplementationOnce((payload: any) => {
+      capturedPayload = payload;
+      return { select: () => ({ single: () => Promise.resolve({ data: DB_LOG, error: null }) }) };
+    });
+
+    await act(async () => {
+      await useFoodLogStore.getState().addLog({ ...MOCK_LOG, photo_url: undefined }, 'user-1', false);
+    });
+
+    expect(capturedPayload).not.toHaveProperty('photo_url');
+  });
+
+  it('includes photo_url in the insert when it is provided', async () => {
+    let capturedPayload: any;
+    mockInsert.mockImplementationOnce((payload: any) => {
+      capturedPayload = payload;
+      return { select: () => ({ single: () => Promise.resolve({ data: DB_LOG, error: null }) }) };
+    });
+
+    await act(async () => {
+      await useFoodLogStore.getState().addLog(
+        { ...MOCK_LOG, photo_url: 'https://cdn.example.com/photo.jpg' },
+        'user-1',
+        false
+      );
+    });
+
+    expect(capturedPayload.photo_url).toBe('https://cdn.example.com/photo.jpg');
   });
 });
 

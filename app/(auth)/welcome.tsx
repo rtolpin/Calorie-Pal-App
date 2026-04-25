@@ -77,7 +77,13 @@ export default function WelcomeScreen() {
               <View style={styles.guestDividerLine} />
             </View>
 
-            <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.guestBtn}
+              onPress={handleGuest}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Continue as Guest — no account needed"
+            >
               <Text style={styles.guestBtnArrow}>👇</Text>
               <View style={styles.guestBtnTextContainer}>
                 <Text style={styles.guestBtnTitle}>Continue as Guest</Text>

@@ -150,6 +150,12 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
         )}
 
         <View style={styles.content}>
+          {/* Top label — mirrors food card pattern */}
+          <View style={styles.entryHeader}>
+            <Ionicons name="eye-outline" size={11} color={Colors.secondary} />
+            <Text style={styles.entryHeaderText}>View or Edit this Entry</Text>
+          </View>
+
           <View style={styles.header}>
             <Text style={styles.exerciseName} numberOfLines={1}>
               {log.photo_url ? `${log.exercise_emoji} ` : ''}{log.exercise_name}
@@ -252,6 +258,20 @@ const styles = StyleSheet.create({
     color: Colors.text,
     flex: 1,
     marginRight: 8,
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.secondary + '30',
+  },
+  entryHeaderText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: Colors.secondary,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   favoriteBtn: { padding: 4 },

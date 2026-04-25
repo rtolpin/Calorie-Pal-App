@@ -1,4 +1,4 @@
-import { ActivityLevel, Goal } from '../types';
+import { ActivityLevel, Gender, Goal } from '../types';
 
 const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
   sedentary: 1.2,
@@ -31,16 +31,36 @@ export function calculateTDEE(
   return Math.round(bmr * ACTIVITY_MULTIPLIERS[activityLevel]);
 }
 
+/** Maps a Gender to a TDEE, using the average of male/female for 'other'. */
+function tdeeForGender(
+  weightKg: number,
+  heightCm: number,
+  age: number,
+  activityLevel: ActivityLevel,
+  gender: Gender,
+): number {
+  if (gender === 'male') {
+    return calculateTDEE(weightKg, heightCm, age, true, activityLevel);
+  }
+  if (gender === 'female') {
+    return calculateTDEE(weightKg, heightCm, age, false, activityLevel);
+  }
+  // 'other': average of male and female Mifflin-St Jeor values
+  const male   = calculateTDEE(weightKg, heightCm, age, true,  activityLevel);
+  const female = calculateTDEE(weightKg, heightCm, age, false, activityLevel);
+  return Math.round((male + female) / 2);
+}
+
 export function calculateDailyCalorieTarget(
   weightKg: number,
   heightCm: number,
   age: number,
   activityLevel: ActivityLevel,
   goal: Goal,
-  weightLossRate: WeightLossRate = 1
+  weightLossRate: WeightLossRate = 1,
+  gender: Gender = 'female',
 ): number {
-  // Use female formula by default (most conservative)
-  const tdee = calculateTDEE(weightKg, heightCm, age, false, activityLevel);
+  const tdee = tdeeForGender(weightKg, heightCm, age, activityLevel, gender);
   let adjustment: number;
   if (goal === 'lose_weight') {
     adjustment = -WEIGHT_LOSS_DEFICITS[weightLossRate];

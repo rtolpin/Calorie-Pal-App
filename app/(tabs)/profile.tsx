@@ -30,8 +30,14 @@ import {
   scheduleDailyReminder,
   cancelDailyReminder,
 } from '../../lib/notifications';
+import { getTimeFormat, saveTimeFormat } from '../../lib/asyncStorage';
+import {
+  parseNotifTime, buildNotifTime,
+  formatDisplayHour, isAmHour, toggleAmPm,
+  adjustHour, adjustMinute,
+} from '../../lib/timeUtils';
 import { Colors } from '../../constants/Colors';
-import { Goal, ActivityLevel } from '../../types';
+import { Gender, Goal, ActivityLevel } from '../../types';
 
 const GOALS: { value: Goal; label: string; emoji: string; desc: string }[] = [
   { value: 'lose_weight', label: 'Lose Weight', emoji: '🔥', desc: 'Calorie deficit to burn fat' },
@@ -119,6 +125,7 @@ export default function ProfileScreen() {
   const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('ft');
 
   // ── Editable profile fields ───────────────────────────────────────────────
+  const [selectedGender, setSelectedGender] = useState<Gender>(profile?.gender || 'other');
   const [selectedGoal, setSelectedGoal] = useState<Goal>(profile?.goal || 'maintain');
   const [weightLossRate, setWeightLossRate] = useState<WeightLossRate>(1);
   const [selectedActivity, setSelectedActivity] = useState<ActivityLevel>(
@@ -138,8 +145,21 @@ export default function ProfileScreen() {
   const [carbsPct, setCarbsPct] = useState(profile?.carbs_target_pct || 40);
   const [fatPct, setFatPct] = useState(profile?.fat_target_pct || 30);
   const [notificationsOn, setNotificationsOn] = useState(profile?.notification_enabled || false);
-  const [notifTime, setNotifTime] = useState(profile?.notification_time || '19:00');
+  const [notifHour, setNotifHour] = useState(19);
+  const [notifMinute, setNotifMinute] = useState(0);
+  const [timeFormat, setTimeFormatState] = useState<'12h' | '24h'>('12h');
   const [saving, setSaving] = useState(false);
+
+  // ── Time picker helpers ───────────────────────────────────────────────────
+  const notifTime = buildNotifTime(notifHour, notifMinute);
+  const displayHour = formatDisplayHour(notifHour, timeFormat);
+  const displayMinute = String(notifMinute).padStart(2, '0');
+  const isAm = isAmHour(notifHour);
+
+  const handleSetTimeFormat = async (fmt: '12h' | '24h') => {
+    setTimeFormatState(fmt);
+    await saveTimeFormat(fmt);
+  };
 
   const macroTotal = proteinPct + carbsPct + fatPct;
   const macroValid = macroTotal === 100;
@@ -147,6 +167,7 @@ export default function ProfileScreen() {
   // Populate fields from profile on load
   useEffect(() => {
     if (!profile) return;
+    setSelectedGender(profile.gender || 'other');
     setSelectedGoal(profile.goal || 'maintain');
     setSelectedActivity(profile.activity_level || 'lightly_active');
     setCalorieGoal(String(profile.daily_calorie_target));
@@ -154,7 +175,10 @@ export default function ProfileScreen() {
     setCarbsPct(profile.carbs_target_pct);
     setFatPct(profile.fat_target_pct);
     setNotificationsOn(profile.notification_enabled);
-    setNotifTime(profile.notification_time);
+    const { hour, minute } = parseNotifTime(profile.notification_time || '19:00');
+    setNotifHour(hour);
+    setNotifMinute(minute);
+    getTimeFormat().then(setTimeFormatState);
 
     if (profile.weight_kg) {
       setWeightInput(
@@ -194,8 +218,8 @@ export default function ProfileScreen() {
         : parseFloat(heightCm) || 0;
     const age = parseInt(ageInput) || 0;
     if (!weightKg || !heightCmVal || !age) return null;
-    return calculateDailyCalorieTarget(weightKg, heightCmVal, age, selectedActivity, selectedGoal, weightLossRate);
-  }, [weightInput, heightFt, heightIn, heightCm, ageInput, selectedActivity, selectedGoal, weightLossRate, weightUnit, heightUnit]);
+    return calculateDailyCalorieTarget(weightKg, heightCmVal, age, selectedActivity, selectedGoal, weightLossRate, selectedGender);
+  }, [weightInput, heightFt, heightIn, heightCm, ageInput, selectedActivity, selectedGoal, weightLossRate, weightUnit, heightUnit, selectedGender]);
 
   // ── Save handlers ─────────────────────────────────────────────────────────
   const handleSaveProfile = async () => {
@@ -212,6 +236,7 @@ export default function ProfileScreen() {
           : parseFloat(heightCm) || 0;
 
       await updateProfile({
+        gender: selectedGender,
         goal: selectedGoal,
         activity_level: selectedActivity,
         weight_kg: weightKg || undefined,
@@ -238,13 +263,20 @@ export default function ProfileScreen() {
       quality: 0.7,
       base64: true,
     });
-    if (result.canceled || !result.assets[0]?.base64 || !session) return;
+
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Error', 'Could not read image data. Please try again.');
+      return;
+    }
+    if (!session) return;
 
     setAvatarLoading(true);
     try {
-      const { base64 } = result.assets[0];
-      const fileName = `profile/${session.user.id}.jpg`;
-      const binary = atob(base64);
+      // Path must start with the user's own ID to satisfy RLS policies
+      const fileName = `${session.user.id}/profile.jpg`;
+      const binary = atob(asset.base64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
@@ -256,8 +288,8 @@ export default function ProfileScreen() {
 
       const { data } = supabase.storage.from('meal-photos').getPublicUrl(fileName);
       await updateProfile({ avatar_url: data.publicUrl });
-    } catch {
-      Alert.alert('Error', 'Failed to upload profile photo. Please try again.');
+    } catch (e: any) {
+      Alert.alert('Upload Failed', e?.message || 'Failed to upload profile photo. Please try again.');
     } finally {
       setAvatarLoading(false);
     }
@@ -552,6 +584,27 @@ export default function ProfileScreen() {
             ))}
           </View>
 
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>⚥ Biological Sex</Text>
+          <Text style={styles.statsHint}>Used in the Mifflin-St Jeor BMR equation for accurate calorie targets.</Text>
+          <View style={styles.genderRow}>
+            {([
+              { value: 'male',   label: '♂ Male' },
+              { value: 'female', label: '♀ Female' },
+              { value: 'other',  label: '⚧ Other' },
+            ] as { value: Gender; label: string }[]).map(({ value, label }) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.genderBtn, selectedGender === value && styles.genderBtnActive]}
+                onPress={() => setSelectedGender(value)}
+                disabled={isGuest}
+              >
+                <Text style={[styles.genderBtnText, selectedGender === value && styles.genderBtnTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>📏 Physical Stats</Text>
           <Text style={styles.statsHint}>
             Used to calculate your personalised calorie target via the Mifflin-St Jeor equation.
@@ -811,13 +864,60 @@ export default function ProfileScreen() {
             />
           </View>
           {notificationsOn && (
-            <Input
-              label="Reminder Time (24h format)"
-              value={notifTime}
-              onChangeText={setNotifTime}
-              placeholder="19:00"
-              leftIcon="time-outline"
-            />
+            <View style={styles.timePicker}>
+              <Text style={styles.timePickerLabel}>Reminder Time</Text>
+
+              {/* Format toggle */}
+              <View style={styles.timeFormatRow}>
+                {(['12h', '24h'] as const).map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.timeFormatBtn, timeFormat === f && styles.timeFormatBtnActive]}
+                    onPress={() => handleSetTimeFormat(f)}
+                  >
+                    <Text style={[styles.timeFormatBtnText, timeFormat === f && styles.timeFormatBtnTextActive]}>
+                      {f}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Hour : Minute stepper */}
+              <View style={styles.timeStepperRow}>
+                {/* Hour */}
+                <View style={styles.timeUnit}>
+                  <TouchableOpacity style={styles.timeStepBtn} onPress={() => setNotifHour((h) => adjustHour(h, 1))}>
+                    <Ionicons name="chevron-up" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>{String(displayHour).padStart(2, '0')}</Text>
+                  <TouchableOpacity style={styles.timeStepBtn} onPress={() => setNotifHour((h) => adjustHour(h, -1))}>
+                    <Ionicons name="chevron-down" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.timeSeparator}>:</Text>
+
+                {/* Minute */}
+                <View style={styles.timeUnit}>
+                  <TouchableOpacity style={styles.timeStepBtn} onPress={() => setNotifMinute((m) => adjustMinute(m, 5))}>
+                    <Ionicons name="chevron-up" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>{displayMinute}</Text>
+                  <TouchableOpacity style={styles.timeStepBtn} onPress={() => setNotifMinute((m) => adjustMinute(m, -5))}>
+                    <Ionicons name="chevron-down" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* AM / PM (12h only) */}
+                {timeFormat === '12h' && (
+                  <TouchableOpacity style={styles.amPmBtn} onPress={() => setNotifHour((h) => toggleAmPm(h))}>
+                    <Text style={[styles.amPmText, !isAm && styles.amPmTextActive]}>AM</Text>
+                    <View style={[styles.amPmDivider]} />
+                    <Text style={[styles.amPmText, isAm && styles.amPmTextActive]}>PM</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           )}
         </Animated.View>
 
@@ -1024,6 +1124,20 @@ const styles = StyleSheet.create({
   activityLabelActive: { color: Colors.secondary },
   activityDesc: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, marginTop: 2 },
 
+  // Gender selector
+  genderRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  genderBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+  },
+  genderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '12' },
+  genderBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
+  genderBtnTextActive: { color: Colors.primary },
   // Physical stats inputs
   statsHint: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, marginBottom: 14, lineHeight: 18 },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
@@ -1172,6 +1286,98 @@ const styles = StyleSheet.create({
   notifRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   notifLabel: { fontFamily: 'Nunito_700Bold', fontSize: 15, color: Colors.text },
   notifSub: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+
+  // Time picker
+  timePicker: {
+    backgroundColor: Colors.background,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    gap: 12,
+  },
+  timePickerLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.text,
+  },
+  timeFormatRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeFormatBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  timeFormatBtnActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  timeFormatBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.textLight,
+  },
+  timeFormatBtnTextActive: {
+    color: Colors.textWhite,
+  },
+  timeStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timeUnit: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeStepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primary + '14',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeValue: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 32,
+    color: Colors.primary,
+    minWidth: 56,
+    textAlign: 'center',
+  },
+  timeSeparator: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 32,
+    color: Colors.textLight,
+    marginTop: -4,
+  },
+  amPmBtn: {
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginLeft: 4,
+  },
+  amPmText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.textLight,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+  },
+  amPmTextActive: {
+    color: Colors.textWhite,
+    backgroundColor: Colors.primary,
+  },
+  amPmDivider: {
+    height: 1,
+    backgroundColor: Colors.primary,
+  },
 
   // Menu items
   menuItem: {

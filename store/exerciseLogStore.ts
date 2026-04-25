@@ -69,19 +69,23 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
     // Optimistic update so the journal shows it immediately
     set((state) => ({ exerciseLogs: [fullLog, ...state.exerciseLogs] }));
 
+    // Build payload without optional fields so inserts succeed even if those
+    // columns haven't been added to the Supabase table yet.
+    const payload: Record<string, unknown> = {
+      user_id: userId,
+      exercise_name: log.exercise_name,
+      exercise_emoji: log.exercise_emoji,
+      duration_minutes: log.duration_minutes,
+      calories_burned: log.calories_burned,
+      notes: log.notes,
+      logged_at: log.logged_at || now,
+    };
+    if (log.felt != null) payload.felt = log.felt;
+    if (log.photo_url != null) payload.photo_url = log.photo_url;
+
     const { data, error } = await supabase
       .from('exercise_logs')
-      .insert({
-        user_id: userId,
-        exercise_name: log.exercise_name,
-        exercise_emoji: log.exercise_emoji,
-        duration_minutes: log.duration_minutes,
-        calories_burned: log.calories_burned,
-        photo_url: log.photo_url,
-        felt: log.felt,
-        notes: log.notes,
-        logged_at: log.logged_at || now,
-      })
+      .insert(payload)
       .select()
       .single();
 
@@ -110,7 +114,7 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
 
     const { error } = await supabase
       .from('exercise_logs')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', id)
       .eq('user_id', userId);
 

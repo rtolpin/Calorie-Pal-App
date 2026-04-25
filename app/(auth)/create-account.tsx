@@ -136,7 +136,11 @@ export default function CreateAccountScreen() {
 
             <View style={styles.signInRow}>
               <Text style={styles.signInText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')}>
+              <TouchableOpacity
+                onPress={() => router.replace('/(auth)/sign-in')}
+                accessibilityRole="link"
+                accessibilityLabel="Go to Sign In"
+              >
                 <Text style={styles.signInLink}>Sign In</Text>
               </TouchableOpacity>
             </View>

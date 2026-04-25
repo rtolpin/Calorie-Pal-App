@@ -3,6 +3,7 @@ import {
   groupEntriesByDate,
   filterFavoriteEntries,
   filterByDateRange,
+  parseUserDate,
   applyWaterGoalDelta,
   applyWaterCupDelta,
   getMoodColor,
@@ -258,6 +259,87 @@ describe('filterFavoriteEntries', () => {
 
   it('returns empty array for empty input', () => {
     expect(filterFavoriteEntries([], ['Meal f1'], ['Exercise e1'])).toHaveLength(0);
+  });
+});
+
+// ─── parseUserDate ────────────────────────────────────────────────────────────
+
+describe('parseUserDate', () => {
+  it('converts MM/DD/YYYY to YYYY-MM-DD', () => {
+    expect(parseUserDate('04/25/2026')).toBe('2026-04-25');
+  });
+
+  it('zero-pads single-digit month and day', () => {
+    expect(parseUserDate('1/5/2026')).toBe('2026-01-05');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(parseUserDate('')).toBe('');
+  });
+
+  it('returns empty string for YYYY-MM-DD format (wrong format)', () => {
+    expect(parseUserDate('2026-04-25')).toBe('');
+  });
+
+  it('returns empty string for invalid month (> 12)', () => {
+    expect(parseUserDate('13/01/2026')).toBe('');
+  });
+
+  it('returns empty string for invalid day (> 31)', () => {
+    expect(parseUserDate('01/32/2026')).toBe('');
+  });
+
+  it('returns empty string for month 0', () => {
+    expect(parseUserDate('00/15/2026')).toBe('');
+  });
+
+  it('returns empty string for day 0', () => {
+    expect(parseUserDate('01/00/2026')).toBe('');
+  });
+
+  it('returns empty string for non-date text', () => {
+    expect(parseUserDate('not a date')).toBe('');
+  });
+
+  it('returns empty string for partial date', () => {
+    expect(parseUserDate('04/25')).toBe('');
+  });
+
+  it('handles December 31 correctly', () => {
+    expect(parseUserDate('12/31/2026')).toBe('2026-12-31');
+  });
+});
+
+// ─── parseUserDate + filterByDateRange round-trip ────────────────────────────
+
+describe('parseUserDate → filterByDateRange round-trip', () => {
+  const jan10 = new Date(2026, 0, 10, 12).toISOString();
+  const jan15 = new Date(2026, 0, 15, 12).toISOString();
+  const jan20 = new Date(2026, 0, 20, 12).toISOString();
+  const items = [makeFood('a', jan10), makeFood('b', jan15), makeFood('c', jan20)];
+
+  it('filters correctly when user types valid MM/DD/YYYY dates', () => {
+    const from = parseUserDate('01/12/2026');
+    const to   = parseUserDate('01/18/2026');
+    expect(filterByDateRange(items, from, to)).toHaveLength(1);
+    expect(filterByDateRange(items, from, to)[0].id).toBe('b');
+  });
+
+  it('returns all items when invalid dates produce empty strings', () => {
+    const from = parseUserDate('bad-date');
+    const to   = parseUserDate('');
+    expect(filterByDateRange(items, from, to)).toHaveLength(3);
+  });
+
+  it('from-only filter works correctly', () => {
+    const from = parseUserDate('01/14/2026');
+    expect(filterByDateRange(items, from, '')).toHaveLength(2);
+  });
+
+  it('to-only filter works correctly', () => {
+    const to = parseUserDate('01/14/2026');
+    expect(filterByDateRange(items, '', to)).toHaveLength(1);
+    expect(filterByDateRange(items, '', to)[0].id).toBe('a');
   });
 });
 

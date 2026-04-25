@@ -102,6 +102,21 @@ export function filterFavoriteEntries(
 }
 
 /**
+ * Parses a user-facing "MM/DD/YYYY" date string into a "YYYY-MM-DD" string
+ * suitable for filterByDateRange.  Returns '' for any invalid input.
+ */
+export function parseUserDate(input: string): string {
+  const trimmed = input.trim();
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return '';
+  const month = parseInt(match[1], 10);
+  const day   = parseInt(match[2], 10);
+  const year  = parseInt(match[3], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
  * Filters items to those whose local date falls within [fromDate, toDate].
  * Either bound may be an empty string to mean "unbounded".
  * Dates must be YYYY-MM-DD strings.

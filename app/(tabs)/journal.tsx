@@ -33,7 +33,7 @@ import {
 import { toLocalDateStr } from '../../lib/dateUtils';
 import {
   getRecentPastEntries, groupEntriesByDate, getMoodColor, getMoodQuote,
-  filterFavoriteEntries, filterByDateRange,
+  filterFavoriteEntries, filterByDateRange, parseUserDate,
 } from '../../lib/journalUtils';
 import { DayTemplateFood, DayTemplateExercise } from '../../types';
 import { FoodLog, ExerciseLog } from '../../types';
@@ -139,6 +139,8 @@ interface DayGroupCtx {
   favoriteExerciseNames: Set<string>;
   onToggleFavoriteFood: (name: string) => void;
   onToggleFavoriteExercise: (name: string) => void;
+  /** Date string for which the wellness banner should be suppressed (already shown in top banner). */
+  hideWellnessBannerFor?: string;
 }
 
 function renderDayGroup(date: string, entries: JournalEntry[], ctx: DayGroupCtx) {
@@ -160,7 +162,9 @@ function renderDayGroup(date: string, entries: JournalEntry[], ctx: DayGroupCtx)
         </View>
       </View>
 
-      {w && <WellnessBanner w={w} onEditNote={() => onEditNote(date)} />}
+      {w && date !== ctx.hideWellnessBannerFor && (
+        <WellnessBanner w={w} onEditNote={() => onEditNote(date)} />
+      )}
 
       {entries.map((entry) =>
         entry.type === 'food' ? (
@@ -194,8 +198,12 @@ export default function JournalScreen() {
   const { isOnline } = useNetworkStatus();
 
   const [filter, setFilter] = useState<Filter>('today');
+  // Separate display (what user types) from applied (validated, drives the filter)
+  const [customFromInput, setCustomFromInput] = useState('');
+  const [customToInput, setCustomToInput] = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [customDateError, setCustomDateError] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('all');
   const [search, setSearch] = useState('');
   const [wellnessMap, setWellnessMap] = useState<Record<string, DailyWellness>>({});
@@ -333,6 +341,30 @@ export default function JournalScreen() {
 
   const handleDeleteFood = (id: string) => deleteLog(id, session?.user.id, isGuest);
   const handleDeleteExercise = (id: string) => deleteExerciseLog(id, session?.user.id, isGuest);
+
+  const handleApplyCustomDate = () => {
+    const from = parseUserDate(customFromInput);
+    const to   = parseUserDate(customToInput);
+    if (!customFromInput && !customToInput) {
+      setCustomFrom(''); setCustomTo(''); setCustomDateError(''); return;
+    }
+    if ((customFromInput && !from) || (customToInput && !to)) {
+      setCustomDateError('Enter dates as MM/DD/YYYY (e.g. 01/15/2026)');
+      return;
+    }
+    if (from && to && from > to) {
+      setCustomDateError('"From" date must be on or before "To" date');
+      return;
+    }
+    setCustomDateError('');
+    setCustomFrom(from);
+    setCustomTo(to);
+  };
+
+  const handleClearCustomDate = () => {
+    setCustomFromInput(''); setCustomToInput('');
+    setCustomFrom(''); setCustomTo(''); setCustomDateError('');
+  };
 
   const handleToggleFavoriteFood = async (mealName: string) => {
     const isNow = await toggleFavoriteMeal(mealName);
@@ -486,6 +518,9 @@ export default function JournalScreen() {
     favoriteExerciseNames,
     onToggleFavoriteFood: handleToggleFavoriteFood,
     onToggleFavoriteExercise: handleToggleFavoriteExercise,
+    // When the Today filter is active the top banner already shows today's wellness,
+    // so suppress it inside the day-group to avoid showing the quote twice.
+    hideWellnessBannerFor: filter === 'today' ? todayStr : undefined,
   };
 
   return (
@@ -499,7 +534,8 @@ export default function JournalScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.noteBtn}
-              onPress={() => handleOpenNote(todayStr)}
+              onPress={() => router.push('/notes')}
+              accessibilityLabel="Open journal notes"
             >
               <Ionicons name="journal-outline" size={16} color={Colors.primary} />
               <Text style={styles.noteBtnText}>Notes</Text>
@@ -507,6 +543,8 @@ export default function JournalScreen() {
             <TouchableOpacity
               style={styles.addExerciseBtn}
               onPress={() => router.push('/log-exercise')}
+              accessibilityRole="button"
+              accessibilityLabel="Log an exercise"
             >
               <Ionicons name="fitness-outline" size={18} color={Colors.secondary} />
               <Text style={styles.addExerciseText}>Log Exercise</Text>
@@ -566,45 +604,61 @@ export default function JournalScreen() {
           ))}
         </View>
 
-        {/* Custom date range inputs — shown only when Custom filter is active */}
+        {/* Custom date range — shown only when Custom filter is active */}
         {filter === 'custom' && (
-          <View style={styles.customDateRow}>
-            <View style={styles.customDateField}>
-              <Text style={styles.customDateLabel}>From</Text>
-              <TextInput
-                style={styles.customDateInput}
-                value={customFrom}
-                onChangeText={setCustomFrom}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textMuted}
-                maxLength={10}
-                keyboardType="numbers-and-punctuation"
-                accessibilityLabel="Filter from date"
-              />
-            </View>
-            <Text style={styles.customDateArrow}>→</Text>
-            <View style={styles.customDateField}>
-              <Text style={styles.customDateLabel}>To</Text>
-              <TextInput
-                style={styles.customDateInput}
-                value={customTo}
-                onChangeText={setCustomTo}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textMuted}
-                maxLength={10}
-                keyboardType="numbers-and-punctuation"
-                accessibilityLabel="Filter to date"
-              />
-            </View>
-            {(customFrom || customTo) && (
+          <View style={styles.customDateSection}>
+            <View style={styles.customDateRow}>
+              <View style={styles.customDateField}>
+                <Text style={styles.customDateLabel}>From</Text>
+                <TextInput
+                  style={styles.customDateInput}
+                  value={customFromInput}
+                  onChangeText={(v) => { setCustomFromInput(v); setCustomDateError(''); }}
+                  placeholder="MM/DD/YYYY"
+                  placeholderTextColor={Colors.textMuted}
+                  maxLength={10}
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="next"
+                  accessibilityLabel="Filter from date"
+                />
+              </View>
+              <Text style={styles.customDateArrow}>→</Text>
+              <View style={styles.customDateField}>
+                <Text style={styles.customDateLabel}>To</Text>
+                <TextInput
+                  style={styles.customDateInput}
+                  value={customToInput}
+                  onChangeText={(v) => { setCustomToInput(v); setCustomDateError(''); }}
+                  placeholder="MM/DD/YYYY"
+                  placeholderTextColor={Colors.textMuted}
+                  maxLength={10}
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="search"
+                  onSubmitEditing={handleApplyCustomDate}
+                  accessibilityLabel="Filter to date"
+                />
+              </View>
               <TouchableOpacity
-                onPress={() => { setCustomFrom(''); setCustomTo(''); }}
-                accessibilityLabel="Clear date filter"
-                style={styles.customDateClearBtn}
+                onPress={handleApplyCustomDate}
+                style={styles.customDateApplyBtn}
+                accessibilityLabel="Apply date filter"
               >
-                <Ionicons name="close-circle" size={20} color={Colors.textLight} />
+                <Ionicons name="search" size={16} color={Colors.textWhite} />
               </TouchableOpacity>
-            )}
+            </View>
+
+            {customDateError ? (
+              <Text style={styles.customDateError}>{customDateError}</Text>
+            ) : (customFrom || customTo) ? (
+              <View style={styles.customDateAppliedRow}>
+                <Text style={styles.customDateAppliedText}>
+                  Showing {allEntries.length} {allEntries.length === 1 ? 'result' : 'results'}
+                </Text>
+                <TouchableOpacity onPress={handleClearCustomDate} accessibilityLabel="Clear date filter">
+                  <Text style={styles.customDateClearText}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         )}
       </View>
@@ -812,7 +866,7 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: Colors.primary },
   segmentText: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.textLight },
   segmentTextActive: { color: Colors.textWhite },
-  typeFilterRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  typeFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   typeChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -913,12 +967,11 @@ const styles = StyleSheet.create({
   },
   noteBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.primary },
 
+  customDateSection: { paddingTop: 8, paddingBottom: 4, gap: 6 },
   customDateRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 8,
-    paddingBottom: 4,
+    alignItems: 'flex-end',
+    gap: 6,
   },
   customDateField: { flex: 1 },
   customDateLabel: {
@@ -937,16 +990,43 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 9,
     backgroundColor: Colors.surface,
   },
   customDateArrow: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 16,
+    fontSize: 18,
     color: Colors.textLight,
-    marginTop: 18,
+    paddingBottom: 10,
   },
-  customDateClearBtn: { marginTop: 18 },
+  customDateApplyBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customDateError: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.error,
+  },
+  customDateAppliedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customDateAppliedText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.textLight,
+  },
+  customDateClearText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.primary,
+  },
   quickFillRow: {
     flexDirection: 'row',
     gap: 8,
@@ -988,28 +1068,28 @@ const styles = StyleSheet.create({
   // Wellness banner (non-button, mood-colored info display)
   wellnessBanner: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    gap: 10,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    gap: 6,
   },
   wellnessMoodRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
   },
-  wellnessMoodEmoji: { fontSize: 28, lineHeight: 32 },
+  wellnessMoodEmoji: { fontSize: 18, lineHeight: 22 },
   wellnessMoodLabel: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 15,
+    fontSize: 13,
     color: Colors.text,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   wellnessMoodQuote: {
     fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textLight,
-    lineHeight: 17,
+    lineHeight: 15,
     fontStyle: 'italic',
   },
   wellnessWaterRow: {

@@ -56,6 +56,33 @@ describe('FoodLogCard — photo press: no photo', () => {
   });
 });
 
+describe('FoodLogCard — top edit-entry header', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renders the "View or Edit this Entry" header', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('edit-header-btn')).toBeTruthy();
+  });
+
+  it('tapping the header navigates to the edit screen', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('edit-header-btn'));
+    expect(getRouterPush()).toHaveBeenCalledWith({
+      pathname: '/edit-entry/[id]',
+      params: { id: BASE_LOG.id },
+    });
+  });
+
+  it('tapping the pencil icon navigates to the edit screen', () => {
+    const { getByTestId } = render(<FoodLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('edit-btn'));
+    expect(getRouterPush()).toHaveBeenCalledWith({
+      pathname: '/edit-entry/[id]',
+      params: { id: BASE_LOG.id },
+    });
+  });
+});
+
 describe('FoodLogCard — photo press: with photo', () => {
   const LOG_WITH_PHOTO = { ...BASE_LOG, photo_url: 'https://example.com/photo.jpg' };
 
@@ -87,12 +114,30 @@ describe('FoodLogCard — photo press: with photo', () => {
     expect(labels).toContain('Cancel');
   });
 
-  it('Cancel button has destructive cancel style', () => {
+  it('action sheet has exactly 4 options (View Full Screen, Replace Photo, View Details, Cancel)', () => {
+    const { getByTestId } = render(<FoodLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('photo-container'));
+    const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
+    expect(buttons).toHaveLength(4);
+  });
+
+  it('Cancel button has cancel style', () => {
     const { getByTestId } = render(<FoodLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
     fireEvent.press(getByTestId('photo-container'));
     const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
     const cancel = buttons.find((b) => b.text === 'Cancel');
     expect(cancel?.style).toBe('cancel');
+  });
+
+  it('View Details navigates to the edit screen', () => {
+    const { getByTestId } = render(<FoodLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('photo-container'));
+    const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
+    buttons.find((b: any) => b.text === 'View Details')?.onPress?.();
+    expect(getRouterPush()).toHaveBeenCalledWith({
+      pathname: '/edit-entry/[id]',
+      params: { id: LOG_WITH_PHOTO.id },
+    });
   });
 
   it('Replace Photo navigates to the edit screen', () => {

@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  getTimeFormat,
+  saveTimeFormat,
+  getAllWellnessDates,
   getGuestLogs,
   saveGuestLog,
   updateGuestLog,
@@ -351,6 +354,80 @@ describe('Mood tracking', () => {
   });
 });
 
+describe('Daily notes — edge cases', () => {
+  it('saving a note with only whitespace removes it', async () => {
+    await setDailyNote('2026-04-25', 'Something');
+    await setDailyNote('2026-04-25', '   ');
+    expect(await getDailyNote('2026-04-25')).toBeNull();
+  });
+
+  it('a note can contain special characters and emoji', async () => {
+    const content = 'Felt great 💪 — 3 km run! PR: 28\'42"';
+    await setDailyNote('2026-04-25', content);
+    expect(await getDailyNote('2026-04-25')).toBe(content);
+  });
+
+  it('a very long note is preserved exactly', async () => {
+    const long = 'A'.repeat(500);
+    await setDailyNote('2026-04-25', long);
+    expect(await getDailyNote('2026-04-25')).toBe(long);
+  });
+});
+
+describe('getAllWellnessDates', () => {
+  it('returns empty array when nothing is stored', async () => {
+    expect(await getAllWellnessDates()).toEqual([]);
+  });
+
+  it('includes a date that has a note', async () => {
+    await setDailyNote('2026-04-25', 'Great day!');
+    expect(await getAllWellnessDates()).toContain('2026-04-25');
+  });
+
+  it('includes a date that has a mood', async () => {
+    await setMood('2026-04-24', 'good');
+    expect(await getAllWellnessDates()).toContain('2026-04-24');
+  });
+
+  it('deduplicates dates that have both a note and a mood', async () => {
+    await setDailyNote('2026-04-23', 'Both!');
+    await setMood('2026-04-23', 'great');
+    const dates = await getAllWellnessDates();
+    expect(dates.filter((d) => d === '2026-04-23')).toHaveLength(1);
+  });
+
+  it('returns dates sorted newest-first', async () => {
+    await setDailyNote('2026-04-20', 'older');
+    await setDailyNote('2026-04-25', 'newer');
+    const dates = await getAllWellnessDates();
+    const i20 = dates.indexOf('2026-04-20');
+    const i25 = dates.indexOf('2026-04-25');
+    expect(i25).toBeLessThan(i20);
+  });
+});
+
+describe('Time format preference', () => {
+  it('returns "12h" as the default when nothing is saved', async () => {
+    expect(await getTimeFormat()).toBe('12h');
+  });
+
+  it('saves and retrieves "24h"', async () => {
+    await saveTimeFormat('24h');
+    expect(await getTimeFormat()).toBe('24h');
+  });
+
+  it('saves and retrieves "12h"', async () => {
+    await saveTimeFormat('12h');
+    expect(await getTimeFormat()).toBe('12h');
+  });
+
+  it('overwrites a previous preference', async () => {
+    await saveTimeFormat('24h');
+    await saveTimeFormat('12h');
+    expect(await getTimeFormat()).toBe('12h');
+  });
+});
+
 describe('Daily journal notes', () => {
   const TODAY = '2026-04-25';
 
@@ -391,6 +468,23 @@ describe('Daily journal notes', () => {
   it('setting a note for one date does not affect another date', async () => {
     await setDailyNote('2026-04-25', 'Note A');
     expect(await getDailyNote('2026-04-24')).toBeNull();
+  });
+});
+
+describe('Water goal — tap-to-edit persistence', () => {
+  it('saves a goal set via text input and retrieves it', async () => {
+    await saveWaterGoal(12);
+    expect(await getWaterGoal()).toBe(12);
+  });
+
+  it('still clamps values entered below 1', async () => {
+    await saveWaterGoal(0);
+    expect(await getWaterGoal()).toBe(1);
+  });
+
+  it('still clamps values entered above 20', async () => {
+    await saveWaterGoal(21);
+    expect(await getWaterGoal()).toBe(20);
   });
 });
 

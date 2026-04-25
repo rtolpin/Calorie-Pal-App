@@ -234,6 +234,21 @@ describe('updateExerciseLog', () => {
       expect(useExerciseLogStore.getState().exerciseLogs[0].calories_burned).toBe(500);
     });
 
+    it('does NOT include updated_at in the Supabase update payload', async () => {
+      useExerciseLogStore.setState({ exerciseLogs: [DB_LOG] });
+      let capturedPayload: any;
+      mockUpdate.mockImplementationOnce((payload: any) => {
+        capturedPayload = payload;
+        return { eq: () => ({ eq: () => Promise.resolve({ error: null }) }) };
+      });
+
+      await act(async () => {
+        await useExerciseLogStore.getState().updateExerciseLog('db-ex-1', { calories_burned: 500 }, 'user-1', false);
+      });
+
+      expect(capturedPayload).not.toHaveProperty('updated_at');
+    });
+
     it('throws on Supabase error', async () => {
       useExerciseLogStore.setState({ exerciseLogs: [DB_LOG] });
       mockUpdate.mockReturnValueOnce({

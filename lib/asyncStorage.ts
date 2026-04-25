@@ -134,12 +134,39 @@ export async function getDailyNote(date: string): Promise<string | null> {
   return raw || null;
 }
 
+/**
+ * Returns all dates (YYYY-MM-DD, newest first) that have either a note OR a
+ * mood entry stored in AsyncStorage.
+ */
+export async function getAllWellnessDates(): Promise<string[]> {
+  const keys = await AsyncStorage.getAllKeys();
+  const dates = new Set<string>();
+  for (const key of keys) {
+    if (key.startsWith('daily_note_')) dates.add(key.replace('daily_note_', ''));
+    if (key.startsWith('mood_'))        dates.add(key.replace('mood_', ''));
+  }
+  return [...dates].sort((a, b) => b.localeCompare(a));
+}
+
 export async function setDailyNote(date: string, note: string): Promise<void> {
   if (note.trim()) {
     await AsyncStorage.setItem(`daily_note_${date}`, note);
   } else {
     await AsyncStorage.removeItem(`daily_note_${date}`);
   }
+}
+
+// ── Reminder time-format preference ──────────────────────────────────────────
+
+const TIME_FORMAT_KEY = 'reminder_time_format';
+
+export async function getTimeFormat(): Promise<'12h' | '24h'> {
+  const raw = await AsyncStorage.getItem(TIME_FORMAT_KEY);
+  return raw === '24h' ? '24h' : '12h';
+}
+
+export async function saveTimeFormat(format: '12h' | '24h'): Promise<void> {
+  await AsyncStorage.setItem(TIME_FORMAT_KEY, format);
 }
 
 // ── Favorites (stored as arrays of names, not IDs, so they survive log deletion) ──

@@ -68,6 +68,8 @@ export default function HomeScreen() {
   const [guestCalorieGoal, setGuestCalorieGoal] = useState<number | null>(null);
   const [waterCups, setWaterCupsState] = useState(0);
   const [waterGoal, setWaterGoalState] = useState(8);
+  const [editingWaterGoal, setEditingWaterGoal] = useState(false);
+  const [waterGoalInput, setWaterGoalInput] = useState('8');
   const [todayMood, setTodayMood] = useState<Mood | null>(null);
 
   const tip = MOTIVATIONAL_TIPS[new Date().getDay() % MOTIVATIONAL_TIPS.length];
@@ -119,7 +121,7 @@ export default function HomeScreen() {
     useCallback(() => {
       getWaterCups(todayStr).then(setWaterCupsState);
       getMood(todayStr).then(setTodayMood);
-      getWaterGoal().then(setWaterGoalState);
+      getWaterGoal().then((g) => { setWaterGoalState(g); setWaterGoalInput(String(g)); });
     }, [todayStr])
   );
 
@@ -129,11 +131,15 @@ export default function HomeScreen() {
     await setWaterCups(todayStr, next);
   };
 
-  const handleWaterGoalChange = async (delta: number) => {
-    const next = applyWaterGoalDelta(waterGoal, delta);
-    if (next === waterGoal) return;
-    setWaterGoalState(next);
-    await saveWaterGoal(next);
+  const handleSaveWaterGoal = async () => {
+    const val = parseInt(waterGoalInput, 10);
+    if (!val || val < 1 || val > 20) {
+      Alert.alert('Invalid Goal', 'Please enter a goal between 1 and 20 cups.');
+      return;
+    }
+    setWaterGoalState(val);
+    setEditingWaterGoal(false);
+    await saveWaterGoal(val);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -241,7 +247,12 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.calorieCard}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.sectionTitle}>Today's Progress</Text>
-            <TouchableOpacity onPress={handleOpenGoalEdit} style={styles.editGoalBtn}>
+            <TouchableOpacity
+              onPress={handleOpenGoalEdit}
+              style={styles.editGoalBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Set daily calorie goal"
+            >
               <Ionicons name="pencil-outline" size={16} color={Colors.primary} />
               <Text style={styles.editGoalText}>Set Goal</Text>
             </TouchableOpacity>
@@ -344,7 +355,11 @@ export default function HomeScreen() {
           <Animated.View entering={FadeInDown.delay(300).springify()}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Recent Activity</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/journal')}>
+              <TouchableOpacity
+                onPress={() => router.push('/(tabs)/journal')}
+                accessibilityRole="link"
+                accessibilityLabel="See all activity in journal"
+              >
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
@@ -370,39 +385,46 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.waterCard}>
           <View style={styles.waterHeader}>
             <Text style={styles.waterTitle}>💧 Water Intake</Text>
-            <View style={styles.waterGoalStepper}>
-              <Text style={styles.waterGoalStepperLabel}>Goal</Text>
+            {editingWaterGoal ? (
+              <View style={styles.waterGoalEditRow}>
+                <TextInput
+                  style={styles.waterGoalInput}
+                  value={waterGoalInput}
+                  onChangeText={setWaterGoalInput}
+                  keyboardType="number-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  maxLength={2}
+                  accessibilityLabel="Water goal cups"
+                />
+                <Text style={styles.waterGoalInputLabel}>cups</Text>
+                <TouchableOpacity onPress={handleSaveWaterGoal} style={styles.waterGoalSaveBtn} accessibilityRole="button" accessibilityLabel="Save water goal">
+                  <Ionicons name="checkmark" size={16} color={Colors.textWhite} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditingWaterGoal(false)} accessibilityLabel="Cancel">
+                  <Ionicons name="close" size={18} color={Colors.textLight} />
+                </TouchableOpacity>
+              </View>
+            ) : (
               <TouchableOpacity
-                onPress={() => handleWaterGoalChange(-1)}
-                style={[styles.waterGoalStepBtn, waterGoal <= 1 && styles.waterGoalStepBtnDisabled]}
-                disabled={waterGoal <= 1}
+                onPress={() => { setEditingWaterGoal(true); setWaterGoalInput(String(waterGoal)); }}
+                style={styles.waterGoalBtn}
+                accessibilityLabel={`Daily water goal: ${waterGoal} cups. Tap to edit.`}
               >
-                <Text style={styles.waterGoalStepText}>−</Text>
+                <Text style={styles.waterGoal}>Goal: {waterGoal} cups</Text>
+                <Ionicons name="pencil-outline" size={11} color={Colors.textMuted} />
               </TouchableOpacity>
-              <Text style={styles.waterGoalStepValue}>{waterGoal}</Text>
-              <TouchableOpacity
-                onPress={() => handleWaterGoalChange(1)}
-                style={[styles.waterGoalStepBtn, waterGoal >= 20 && styles.waterGoalStepBtnDisabled]}
-                disabled={waterGoal >= 20}
-              >
-                <Text style={styles.waterGoalStepText}>+</Text>
-              </TouchableOpacity>
-              <Text style={styles.waterGoalStepUnit}>cups</Text>
-            </View>
+            )}
           </View>
           <View style={styles.waterRow}>
-            <View style={styles.waterBtnGroup}>
-              {([-10, -5, -1] as const).map((delta) => (
-                <TouchableOpacity
-                  key={delta}
-                  style={styles.waterFineBtn}
-                  onPress={() => handleWaterChange(delta)}
-                  testID={`water-btn-${delta}`}
-                >
-                  <Text style={styles.waterFineBtnText}>{delta}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              style={styles.waterBtn}
+              onPress={() => handleWaterChange(-1)}
+              testID="water-btn--1"
+              accessibilityLabel="Remove one cup"
+            >
+              <Text style={styles.waterBtnText}>−</Text>
+            </TouchableOpacity>
             <View style={styles.waterCountContainer}>
               <Text style={[styles.waterCount, waterCups >= waterGoal && styles.waterCountDone]}>
                 {waterCups}
@@ -411,18 +433,14 @@ export default function HomeScreen() {
                 of {waterGoal} cups {waterCups >= waterGoal ? '✅' : ''}
               </Text>
             </View>
-            <View style={styles.waterBtnGroup}>
-              {([1, 5, 10] as const).map((delta) => (
-                <TouchableOpacity
-                  key={delta}
-                  style={[styles.waterFineBtn, styles.waterFineBtnAdd]}
-                  onPress={() => handleWaterChange(delta)}
-                  testID={`water-btn-+${delta}`}
-                >
-                  <Text style={[styles.waterFineBtnText, styles.waterFineBtnTextAdd]}>+{delta}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              style={[styles.waterBtn, styles.waterBtnAdd]}
+              onPress={() => handleWaterChange(1)}
+              testID="water-btn-+1"
+              accessibilityLabel="Add one cup"
+            >
+              <Text style={[styles.waterBtnText, { color: Colors.textWhite }]}>+</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.waterDotsRow}>
             {Array.from({ length: Math.min(waterGoal, 12) }).map((_, i) => (
@@ -455,6 +473,8 @@ export default function HomeScreen() {
                 key={mood}
                 style={[styles.moodBtn, todayMood === mood && styles.moodBtnActive]}
                 onPress={() => handleMoodSelect(mood)}
+                accessibilityRole="button"
+                accessibilityLabel={`Set mood to ${label}${todayMood === mood ? ', currently selected' : ''}`}
               >
                 <Text style={styles.moodEmoji}>{emoji}</Text>
                 <Text style={[styles.moodLabel, todayMood === mood && styles.moodLabelActive]}>
@@ -684,46 +704,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   waterTitle: { fontFamily: 'Nunito_700Bold', fontSize: 16, color: Colors.text },
-  waterGoalStepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  waterGoalStepperLabel: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
-    color: Colors.textLight,
-    marginRight: 2,
-  },
-  waterGoalStepBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#4FC3F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  waterGoalStepBtnDisabled: {
-    backgroundColor: Colors.borderLight,
-  },
-  waterGoalStepText: {
-    fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 16,
-    color: Colors.textWhite,
-    lineHeight: 20,
-  },
-  waterGoalStepValue: {
-    fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 16,
+  waterGoalBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  waterGoal: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterGoalEditRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  waterGoalInput: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
     color: Colors.text,
-    minWidth: 22,
+    borderWidth: 1.5,
+    borderColor: '#4FC3F7',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    width: 40,
     textAlign: 'center',
   },
-  waterGoalStepUnit: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
-    color: Colors.textLight,
-  },
+  waterGoalInputLabel: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterGoalSaveBtn: { backgroundColor: '#4FC3F7', borderRadius: 8, padding: 4 },
   waterCountDone: { color: '#4FC3F7' },
   waterDotsMore: {
     fontFamily: 'Nunito_700Bold',
@@ -734,36 +731,30 @@ const styles = StyleSheet.create({
   waterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
-  waterBtnGroup: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  waterFineBtn: {
-    width: 34,
-    height: 30,
-    borderRadius: 8,
+  waterBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.background,
     borderWidth: 1.5,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  waterFineBtnAdd: {
-    backgroundColor: '#E3F7FD',
+  waterBtnAdd: {
+    backgroundColor: '#4FC3F7',
     borderColor: '#4FC3F7',
   },
-  waterFineBtnText: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 11,
+  waterBtnText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 24,
     color: Colors.text,
+    lineHeight: 28,
   },
-  waterFineBtnTextAdd: {
-    color: '#0277BD',
-  },
-  waterCountContainer: { alignItems: 'center', flex: 1 },
+  waterCountContainer: { alignItems: 'center' },
   waterCount: { fontFamily: 'Nunito_800ExtraBold', fontSize: 32, color: '#4FC3F7' },
   waterUnit: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
   waterDotsRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },

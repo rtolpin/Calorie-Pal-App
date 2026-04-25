@@ -186,6 +186,15 @@ describe('ExerciseLogCard — delete behaviour', () => {
   });
 });
 
+// ─── top entry header label ───────────────────────────────────────────────────
+
+describe('ExerciseLogCard — top entry header', () => {
+  it('renders "View or Edit this Entry" text', () => {
+    const { getByText } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByText('View or Edit this Entry')).toBeTruthy();
+  });
+});
+
 // ─── accessibility ────────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — accessibility', () => {

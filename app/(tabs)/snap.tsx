@@ -107,7 +107,7 @@ export default function SnapScreen() {
           <Text style={styles.webSubtitle}>
             Upload a photo of your meal and CaloriePal will analyze its nutritional content.
           </Text>
-          <TouchableOpacity style={styles.webUploadBtn} onPress={handlePickImage}>
+          <TouchableOpacity style={styles.webUploadBtn} onPress={handlePickImage} accessibilityRole="button" accessibilityLabel="Upload a meal photo from your library">
             <Ionicons name="cloud-upload-outline" size={28} color={Colors.textWhite} />
             <Text style={styles.webUploadText}>Upload Photo</Text>
           </TouchableOpacity>
@@ -129,7 +129,7 @@ export default function SnapScreen() {
         <Text style={styles.permissionText}>
           CaloriePal needs camera access to snap and analyze your meals
         </Text>
-        <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+        <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission} accessibilityRole="button" accessibilityLabel="Grant camera access">
           <Text style={styles.permissionBtnText}>Grant Camera Access</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -154,6 +154,8 @@ export default function SnapScreen() {
           <TouchableOpacity
             onPress={() => setFlash(flash === 'off' ? 'on' : 'off')}
             style={styles.flashBtn}
+            accessibilityRole="button"
+            accessibilityLabel={flash === 'on' ? 'Turn flash off' : 'Turn flash on'}
           >
             <Ionicons
               name={flash === 'on' ? 'flash' : 'flash-off'}
@@ -175,7 +177,7 @@ export default function SnapScreen() {
 
 
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickImage} disabled={capturing}>
+          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickImage} disabled={capturing} accessibilityRole="button" accessibilityLabel="Choose photo from gallery">
             <Ionicons name="images-outline" size={28} color={capturing ? 'rgba(255,255,255,0.4)' : Colors.textWhite} />
             <Text style={[styles.galleryText, capturing && { opacity: 0.4 }]}>Gallery</Text>
           </TouchableOpacity>

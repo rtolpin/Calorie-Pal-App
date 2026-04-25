@@ -72,25 +72,27 @@ export const useFoodLogStore = create<FoodLogState>((set, get) => ({
     // Optimistic update so the journal shows it immediately
     set((state) => ({ logs: [fullLog, ...state.logs] }));
 
+    const insertPayload: Record<string, unknown> = {
+      user_id: userId,
+      meal_name: log.meal_name,
+      foods_detected: log.foods_detected,
+      calories: log.calories,
+      protein_g: log.protein_g,
+      carbs_g: log.carbs_g,
+      fat_g: log.fat_g,
+      fiber_g: log.fiber_g,
+      sugar_g: log.sugar_g,
+      sodium_mg: log.sodium_mg,
+      cholesterol_mg: log.cholesterol_mg,
+      saturated_fat_g: log.saturated_fat_g,
+      notes: log.notes,
+      logged_at: log.logged_at,
+    };
+    if (log.photo_url != null) insertPayload.photo_url = log.photo_url;
+
     const { data, error } = await supabase
       .from('food_logs')
-      .insert({
-        user_id: userId,
-        meal_name: log.meal_name,
-        photo_url: log.photo_url,
-        foods_detected: log.foods_detected,
-        calories: log.calories,
-        protein_g: log.protein_g,
-        carbs_g: log.carbs_g,
-        fat_g: log.fat_g,
-        fiber_g: log.fiber_g,
-        sugar_g: log.sugar_g,
-        sodium_mg: log.sodium_mg,
-        cholesterol_mg: log.cholesterol_mg,
-        saturated_fat_g: log.saturated_fat_g,
-        notes: log.notes,
-        logged_at: log.logged_at,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -119,7 +121,7 @@ export const useFoodLogStore = create<FoodLogState>((set, get) => ({
 
     const { error } = await supabase
       .from('food_logs')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', id)
       .eq('user_id', userId);
 

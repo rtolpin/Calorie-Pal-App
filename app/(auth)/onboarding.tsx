@@ -15,7 +15,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../store/authStore';
 import { calculateDailyCalorieTarget } from '../../lib/tdee';
-import { ActivityLevel, Goal } from '../../types';
+import { ActivityLevel, Gender, Goal } from '../../types';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
 
@@ -45,6 +45,7 @@ export default function OnboardingScreen() {
   const [heightIn, setHeightIn] = useState('');
   const [goal, setGoal] = useState<Goal>('maintain');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('lightly_active');
+  const [gender, setGender] = useState<Gender>('other');
   const [customCalories, setCustomCalories] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +69,7 @@ export default function OnboardingScreen() {
     const w = weightInKg() || 70;
     const h = heightInCm() || 170;
     const a = parseInt(age) || 30;
-    return calculateDailyCalorieTarget(w, h, a, activityLevel, goal);
+    return calculateDailyCalorieTarget(w, h, a, activityLevel, goal, 1, gender);
   };
 
   const handleFinish = async () => {
@@ -83,6 +84,7 @@ export default function OnboardingScreen() {
       const profileData = {
         id: session.user.id,
         name: name || 'User',
+        gender,
         age: parseInt(age) || null,
         weight_kg: weightInKg() || null,
         height_cm: heightInCm() || null,
@@ -146,7 +148,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="always">
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
             <Animated.View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
@@ -179,6 +181,25 @@ export default function OnboardingScreen() {
             <Text style={styles.subtitle}>
               This helps calculate your personalized calorie targets (optional)
             </Text>
+            <Text style={styles.inputLabel}>Biological Sex</Text>
+            <View style={styles.genderRow}>
+              {([
+                { value: 'male',   label: '♂ Male' },
+                { value: 'female', label: '♀ Female' },
+                { value: 'other',  label: '⚧ Other' },
+              ] as { value: Gender; label: string }[]).map(({ value, label }) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.genderBtn, gender === value && styles.genderBtnActive]}
+                  onPress={() => setGender(value)}
+                >
+                  <Text style={[styles.genderBtnText, gender === value && styles.genderBtnTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <Input label="Age" value={age} onChangeText={setAge} placeholder="e.g. 28" keyboardType="numeric" />
             <View style={styles.weightRow}>
               <View style={{ flex: 1 }}>
@@ -284,8 +305,12 @@ export default function OnboardingScreen() {
               Based on your info, we recommend:
             </Text>
             <View style={styles.recommendedCard}>
-              <Text style={styles.recommendedCalories}>{getRecommendedCalories()}</Text>
-              <Text style={styles.recommendedLabel}>calories per day</Text>
+              <Text style={styles.recommendedCalories}>
+                {customCalories ? (parseInt(customCalories) || getRecommendedCalories()) : getRecommendedCalories()}
+              </Text>
+              <Text style={styles.recommendedLabel}>
+                {customCalories ? 'custom daily target' : 'recommended calories per day'}
+              </Text>
             </View>
             <Text style={styles.customLabel}>Or set a custom target:</Text>
             <Input
@@ -304,7 +329,7 @@ export default function OnboardingScreen() {
 
         <View style={styles.navButtons}>
           {step > 0 && (
-            <Button title="Back" variant="outline" onPress={() => setStep(step - 1)} style={styles.backBtn} />
+            <Button title="Back" variant="outline" size="sm" onPress={() => setStep(step - 1)} style={styles.backBtn} />
           )}
           {step < steps.length - 1 ? (
             <Button
@@ -444,6 +469,19 @@ const styles = StyleSheet.create({
     color: Colors.text,
     marginBottom: 6,
   },
+  genderRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  genderBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  genderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '12' },
+  genderBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
+  genderBtnTextActive: { color: Colors.primary },
   ftInRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   ftField: {
     flex: 1,
@@ -453,19 +491,22 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 0,   // vertical space comes from minHeight + content
     backgroundColor: Colors.surface,
+    minHeight: 48,        // Apple-minimum touch target
   },
   ftInput: {
     flex: 1,
     fontFamily: 'Nunito_400Regular',
-    fontSize: 15,
+    fontSize: 16,
     color: Colors.text,
+    paddingVertical: 12,  // gives the text room and expands the touch area
   },
   ftUnit: {
     fontFamily: 'Nunito_700Bold',
     fontSize: 13,
     color: Colors.textLight,
+    marginLeft: 4,
   },
   weightRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   unitToggle: {
@@ -487,7 +528,7 @@ const styles = StyleSheet.create({
   unitBtnTextActive: { color: Colors.textWhite },
   navButtons: { flexDirection: 'row', gap: 12, marginTop: 32, marginBottom: 16 },
   navBtn: { flex: 1 },
-  backBtn: { minWidth: 96, maxWidth: 120 },
+  backBtn: { minWidth: 80, maxWidth: 100 },
   skip: {
     fontFamily: 'Nunito_400Regular',
     fontSize: 14,

@@ -67,32 +67,38 @@ export default function EditEntryScreen() {
 
   const log = logs.find((l) => l.id === id);
 
-  const [mealName, setMealName] = useState(log?.meal_name || '');
-  const [notes, setNotes] = useState(log?.notes || '');
-  const [photoUri, setPhotoUri] = useState(log?.photo_url || '');
+  // Initialise form from the log snapshot at mount time only — re-running on
+  // every store update would overwrite what the user is typing.
+  const [mealName, setMealName] = useState(() => log?.meal_name ?? '');
+  const [notes, setNotes] = useState(() => log?.notes ?? '');
+  const [photoUri, setPhotoUri] = useState(() => log?.photo_url ?? '');
   const initialDate = log ? new Date(log.logged_at) : new Date();
-  const [dateInput, setDateInput] = useState(formatDateInput(initialDate));
-  const [timeInput, setTimeInput] = useState(formatTimeInput(initialDate));
-  const [values, setValues] = useState<Record<string, string>>({
-    calories: String(log?.calories || 0),
-    protein_g: String(log?.protein_g || 0),
-    carbs_g: String(log?.carbs_g || 0),
-    fat_g: String(log?.fat_g || 0),
-    fiber_g: String(log?.fiber_g || 0),
-    sugar_g: String(log?.sugar_g || 0),
-    sodium_mg: String(log?.sodium_mg || 0),
-    cholesterol_mg: String(log?.cholesterol_mg || 0),
-    saturated_fat_g: String(log?.saturated_fat_g || 0),
-  });
+  const [dateInput, setDateInput] = useState(() => formatDateInput(initialDate));
+  const [timeInput, setTimeInput] = useState(() => formatTimeInput(initialDate));
+  const [values, setValues] = useState<Record<string, string>>(() => ({
+    calories:       String(log?.calories       ?? 0),
+    protein_g:      String(log?.protein_g      ?? 0),
+    carbs_g:        String(log?.carbs_g        ?? 0),
+    fat_g:          String(log?.fat_g          ?? 0),
+    fiber_g:        String(log?.fiber_g        ?? 0),
+    sugar_g:        String(log?.sugar_g        ?? 0),
+    sodium_mg:      String(log?.sodium_mg      ?? 0),
+    cholesterol_mg: String(log?.cholesterol_mg ?? 0),
+    saturated_fat_g:String(log?.saturated_fat_g?? 0),
+  }));
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Only navigate away when the entry is missing at mount — NOT on every update.
+  // Depending on [log] would re-run whenever the store swaps the optimistic ID
+  // for the real Supabase UUID, causing a spurious "Not Found" during save.
   useEffect(() => {
     if (!log) {
       Alert.alert('Not Found', 'This meal entry could not be found.');
       router.back();
     }
-  }, [log]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — only run on mount
 
   const handleChange = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -143,8 +149,8 @@ export default function EditEntryScreen() {
       Alert.alert('Saved! ✅', 'Your changes have been saved.', [
         { text: 'Done', onPress: () => router.back() },
       ]);
-    } catch {
-      Alert.alert('Error', 'Failed to save changes. Please try again.');
+    } catch (e: any) {
+      Alert.alert('Save Failed', e?.message || 'Failed to save changes. Please try again.');
     } finally {
       setSaving(false);
     }

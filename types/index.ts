@@ -1,10 +1,12 @@
 export type Goal = 'lose_weight' | 'maintain' | 'gain_muscle';
 export type ActivityLevel = 'sedentary' | 'lightly_active' | 'active' | 'very_active';
+export type Gender = 'male' | 'female' | 'other';
 
 export interface UserProfile {
   id: string;
   email: string;
   name: string;
+  gender?: Gender;
   age?: number;
   weight_kg?: number;
   height_cm?: number;

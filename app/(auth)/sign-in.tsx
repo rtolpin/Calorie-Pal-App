@@ -121,7 +121,13 @@ export default function SignInScreen() {
               error={errors.password}
             />
 
-            <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword} disabled={resetLoading}>
+            <TouchableOpacity
+              style={styles.forgotRow}
+              onPress={handleForgotPassword}
+              disabled={resetLoading}
+              accessibilityRole="button"
+              accessibilityLabel="Forgot password"
+            >
               <Text style={styles.forgot}>{resetLoading ? 'Sending…' : 'Forgot Password?'}</Text>
             </TouchableOpacity>
 
@@ -142,7 +148,11 @@ export default function SignInScreen() {
 
             <View style={styles.createRow}>
               <Text style={styles.createText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => router.push('/(auth)/create-account')}>
+              <TouchableOpacity
+                onPress={() => router.push('/(auth)/create-account')}
+                accessibilityRole="link"
+                accessibilityLabel="Create a new account"
+              >
                 <Text style={styles.createLink}>Create one</Text>
               </TouchableOpacity>
             </View>

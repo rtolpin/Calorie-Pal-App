@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -38,6 +38,8 @@ export default function LogExerciseScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const scrollViewRef = useRef<import('react-native').ScrollView>(null);
+  const [durationSectionY, setDurationSectionY] = useState(0);
 
   const adjustDuration = (delta: number) => {
     const current = parseInt(duration) || 0;
@@ -55,6 +57,10 @@ export default function LogExerciseScreen() {
     setExerciseEmoji(preset.emoji);
     const mins = parseInt(duration) || 30;
     setCalories(String(Math.round(preset.cal_per_min * mins)));
+    // Jump straight to Duration so the user doesn't have to scroll manually
+    if (durationSectionY > 0) {
+      scrollViewRef.current?.scrollTo({ y: durationSectionY - 16, animated: true });
+    }
   };
 
   const handlePickPhoto = async () => {
@@ -138,9 +144,9 @@ export default function LogExerciseScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.topRow}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close and go back">
               <Ionicons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
             <Text style={styles.title}>Log Exercise 🏃</Text>
@@ -185,7 +191,11 @@ export default function LogExerciseScreen() {
             </View>
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.card}>
+          <Animated.View
+            entering={FadeInDown.delay(150).springify()}
+            style={styles.card}
+            onLayout={(e) => setDurationSectionY(e.nativeEvent.layout.y)}
+          >
             <Text style={styles.sectionLabel}>Duration</Text>
 
             {/* Quick preset buttons */}
@@ -215,18 +225,16 @@ export default function LogExerciseScreen() {
               ))}
             </View>
 
-            {/* Fine-tune row */}
+            {/* Fine-tune row — two compact groups flanking the display */}
             <Text style={styles.durationSubLabel}>Fine-tune</Text>
-            <View style={styles.durationRow}>
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-10)}>
-                <Text style={styles.durationBtnText}>−10</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-5)}>
-                <Text style={styles.durationBtnText}>−5</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-1)}>
-                <Text style={styles.durationBtnText}>−1</Text>
-              </TouchableOpacity>
+            <View style={styles.durationFineRow}>
+              <View style={styles.durationBtnGroup}>
+                {([-10, -5, -1] as const).map((delta) => (
+                  <TouchableOpacity key={delta} style={styles.durationFineBtn} onPress={() => adjustDuration(delta)}>
+                    <Text style={styles.durationFineBtnText}>{delta}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <View style={styles.durationDisplay}>
                 <TextInput
@@ -244,15 +252,13 @@ export default function LogExerciseScreen() {
                 <Text style={styles.durationUnit}>min</Text>
               </View>
 
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(1)}>
-                <Text style={styles.durationBtnText}>+1</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(5)}>
-                <Text style={styles.durationBtnText}>+5</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(10)}>
-                <Text style={styles.durationBtnText}>+10</Text>
-              </TouchableOpacity>
+              <View style={styles.durationBtnGroup}>
+                {([1, 5, 10] as const).map((delta) => (
+                  <TouchableOpacity key={delta} style={[styles.durationFineBtn, styles.durationFineBtnAdd]} onPress={() => adjustDuration(delta)}>
+                    <Text style={[styles.durationFineBtnText, styles.durationFineBtnTextAdd]}>+{delta}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </Animated.View>
 
@@ -326,13 +332,15 @@ export default function LogExerciseScreen() {
               <View style={styles.photoPreviewContainer}>
                 <Image source={{ uri: photoUri }} style={styles.photoPreview} accessibilityLabel="Exercise photo preview" />
                 <View style={styles.photoPreviewActions}>
-                  <TouchableOpacity style={styles.photoActionBtn} onPress={handlePickPhoto}>
+                  <TouchableOpacity style={styles.photoActionBtn} onPress={handlePickPhoto} accessibilityRole="button" accessibilityLabel="Replace exercise photo">
                     <Ionicons name="swap-horizontal-outline" size={16} color={Colors.secondary} />
                     <Text style={styles.photoActionText}>Replace</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.photoActionBtn, styles.photoRemoveBtn]}
                     onPress={() => { setPhotoUri(null); setPhotoBase64(null); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove exercise photo"
                   >
                     <Ionicons name="trash-outline" size={16} color={Colors.error} />
                     <Text style={[styles.photoActionText, { color: Colors.error }]}>Remove</Text>
@@ -493,29 +501,38 @@ const styles = StyleSheet.create({
   durationPresetTextActive: {
     color: Colors.textWhite,
   },
-  durationRow: {
+  durationFineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 8,
   },
-  durationBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+  durationBtnGroup: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  durationFineBtn: {
+    width: 36,
+    height: 32,
+    borderRadius: 8,
     backgroundColor: Colors.background,
     borderWidth: 1.5,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 40,
   },
-  durationBtnText: {
+  durationFineBtnAdd: {
+    backgroundColor: Colors.secondary + '12',
+    borderColor: Colors.secondary + '88',
+  },
+  durationFineBtnText: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 13,
+    fontSize: 11,
     color: Colors.text,
   },
-  durationDisplay: { alignItems: 'center', minWidth: 80 },
+  durationFineBtnTextAdd: {
+    color: Colors.secondary,
+  },
+  durationDisplay: { alignItems: 'center', flex: 1 },
   durationInput: {
     fontFamily: 'Nunito_800ExtraBold',
     fontSize: 36,
