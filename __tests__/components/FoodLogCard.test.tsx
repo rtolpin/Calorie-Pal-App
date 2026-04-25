@@ -10,6 +10,9 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
 }));
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: 'Ionicons',
+}));
 jest.mock('../../components/ui/MacroBadge', () => ({ MacroRow: () => null }));
 
 const BASE_LOG: FoodLog = {

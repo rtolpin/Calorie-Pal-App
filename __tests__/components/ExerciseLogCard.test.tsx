@@ -1,10 +1,13 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import { ExerciseLogCard } from '../../components/ExerciseLogCard';
 import { ExerciseLog } from '../../types';
 
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: 'Ionicons',
+}));
 
 // auth / store / supabase / image picker — all mocked so the card renders cleanly
 jest.mock('../../store/authStore', () => ({
@@ -114,7 +117,7 @@ describe('ExerciseLogCard — Replace Photo flow', () => {
     fireEvent.press(getByTestId('photo-container'));
     const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
     const replace = buttons.find((b: any) => b.text === 'Replace Photo');
-    await replace?.onPress?.();
+    await act(async () => { await replace?.onPress?.(); });
     expect(mockLaunchImageLibraryAsync).toHaveBeenCalled();
   });
 
@@ -123,7 +126,7 @@ describe('ExerciseLogCard — Replace Photo flow', () => {
     const { getByTestId } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
     fireEvent.press(getByTestId('photo-container'));
     const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
-    await buttons.find((b: any) => b.text === 'Replace Photo')?.onPress?.();
+    await act(async () => { await buttons.find((b: any) => b.text === 'Replace Photo')?.onPress?.(); });
     expect(mockUpdateExerciseLog).not.toHaveBeenCalled();
   });
 
@@ -136,7 +139,7 @@ describe('ExerciseLogCard — Replace Photo flow', () => {
     const { getByTestId } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
     fireEvent.press(getByTestId('photo-container'));
     const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
-    await buttons.find((b: any) => b.text === 'Replace Photo')?.onPress?.();
+    await act(async () => { await buttons.find((b: any) => b.text === 'Replace Photo')?.onPress?.(); });
 
     expect(mockUpdateExerciseLog).toHaveBeenCalledWith(
       LOG_WITH_PHOTO.id,
