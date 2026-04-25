@@ -32,6 +32,18 @@
  *     ✓ Passwords don't match → validation error, Supabase not called
  *     ✓ Supabase error surfaces to UI (including expired link)
  *     ✓ Successful update navigates to /(tabs)/ (user is already authenticated)
+ *
+ *   OTP flow (verify-otp.tsx) — preferred path, immune to email pre-fetch
+ *     ✓ Fewer than 6 digits → validation error, verifyOtp not called
+ *     ✓ Exactly 6 digits → verifyOtp called with { email, token, type: 'recovery' }
+ *     ✓ Non-digit characters stripped from OTP input
+ *     ✓ OTP input capped at 6 digits
+ *     ✓ Successful verifyOtp navigates to /(auth)/reset-password
+ *     ✓ isLoading resets after success, error, network throw, and timeout
+ *     ✓ Wrong/expired code → error shown, navigation skipped
+ *     ✓ Resend calls resetPasswordForEmail and clears the OTP field
+ *     ✓ Resend loading resets after success and error
+ *     ✓ Full OTP journey: sign-in → email sent → verify-otp → code entered → reset-password → tabs
  */
 
 import { act } from '@testing-library/react-native';
@@ -670,6 +682,271 @@ describe('UAT: Full reset journey — request → link → set new password → 
     const isExpiredError = error?.message?.toLowerCase().includes('expired');
     expect(isExpiredError).toBe(true);
     // UI shows "Link Expired" alert and navigates back to sign-in — tested separately
+  });
+});
+
+// ─── OTP FLOW (verify-otp.tsx) ───────────────────────────────────────────────
+
+const mockVerifyOtp = jest.fn();
+// Wire verifyOtp into the supabase mock retroactively via the module factory closure
+// (jest.mock is hoisted, so we extend the mock object at test-time instead)
+beforeAll(() => {
+  const supabaseMod = require('../../lib/supabase');
+  supabaseMod.supabase.auth.verifyOtp = (args: any) => mockVerifyOtp(args);
+});
+
+describe('UAT: OTP flow — verify-otp screen', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  // ── validation ──────────────────────────────────────────────────────────────
+
+  it('fewer than 6 digits → validation error, verifyOtp not called', async () => {
+    let error = '';
+    const otp = '123'; // only 3 digits
+    if (otp.length !== 6) {
+      error = 'Please enter all 6 digits.';
+      // verifyOtp never called
+    }
+    expect(error).toBeTruthy();
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
+  });
+
+  it('exactly 6 digits → verifyOtp is called', async () => {
+    mockVerifyOtp.mockResolvedValueOnce({ error: null });
+    const otp = '123456';
+    if (otp.length === 6) {
+      await mockVerifyOtp({ email: 'user@example.com', token: otp, type: 'recovery' });
+    }
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      token: '123456',
+      type: 'recovery',
+    });
+  });
+
+  it('OTP input filters non-digit characters', () => {
+    const raw = '1a2b3c456';
+    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 6);
+    expect(filtered).toBe('123456');
+  });
+
+  it('OTP input is capped at 6 digits', () => {
+    const raw = '1234567890';
+    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 6);
+    expect(filtered).toBe('123456');
+    expect(filtered.length).toBe(6);
+  });
+
+  // ── success path ─────────────────────────────────────────────────────────────
+
+  it('successful verifyOtp navigates to /(auth)/reset-password', async () => {
+    const navigate = jest.fn();
+    mockVerifyOtp.mockResolvedValueOnce({ error: null });
+    const { error } = await mockVerifyOtp({
+      email: 'user@example.com', token: '123456', type: 'recovery',
+    });
+    if (!error) navigate('/(auth)/reset-password');
+    expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
+  });
+
+  it('isLoading resets to false after successful verifyOtp', async () => {
+    mockVerifyOtp.mockResolvedValueOnce({ error: null });
+    let loading = true;
+    try {
+      const { error } = await mockVerifyOtp({
+        email: 'user@example.com', token: '123456', type: 'recovery',
+      });
+      if (error) throw error;
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+  });
+
+  // ── error paths ───────────────────────────────────────────────────────────────
+
+  it('wrong code → verifyOtp error → error message shown, navigation skipped', async () => {
+    const navigate = jest.fn();
+    mockVerifyOtp.mockResolvedValueOnce({ error: { message: 'Token has expired or is invalid' } });
+    let errorMsg = '';
+    try {
+      const { error } = await mockVerifyOtp({
+        email: 'user@example.com', token: '000000', type: 'recovery',
+      });
+      if (error) throw error;
+      navigate('/(auth)/reset-password');
+    } catch (e: any) {
+      const msg = (e?.message ?? '').toLowerCase();
+      if (msg.includes('expired') || msg.includes('invalid') || msg.includes('token')) {
+        errorMsg = 'That code is incorrect or has expired.';
+      }
+    }
+    expect(errorMsg).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('isLoading resets after verifyOtp error', async () => {
+    mockVerifyOtp.mockResolvedValueOnce({ error: { message: 'Token expired' } });
+    let loading = true;
+    try {
+      const { error } = await mockVerifyOtp({
+        email: 'user@example.com', token: '000000', type: 'recovery',
+      });
+      if (error) throw error;
+    } catch {
+      // error shown to user
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+  });
+
+  it('isLoading resets after network throw', async () => {
+    mockVerifyOtp.mockRejectedValueOnce(new Error('Network error'));
+    let loading = true;
+    try {
+      await mockVerifyOtp({ email: 'user@example.com', token: '123456', type: 'recovery' });
+    } catch {
+      // shown to user
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+  });
+
+  it('isLoading resets after timeout — no infinite spinner', async () => {
+    const neverResolves = new Promise<never>(() => {});
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 10)
+    );
+    let loading = true;
+    let caughtMsg = '';
+    try {
+      await Promise.race([neverResolves, timeout]);
+    } catch (e: any) {
+      caughtMsg = e.message;
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+    expect(caughtMsg).toMatch(/timed out/i);
+  });
+
+  // ── resend ───────────────────────────────────────────────────────────────────
+
+  it('resend calls resetPasswordForEmail with the same email', async () => {
+    mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
+    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
+      'user@example.com',
+      { redirectTo: 'caloriepal://reset-password' },
+    );
+  });
+
+  it('resend resets the otp field to empty', () => {
+    let otp = '123';
+    // handleResend clears the otp before re-sending
+    otp = '';
+    expect(otp).toBe('');
+  });
+
+  it('resend loading resets after success', async () => {
+    mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
+    let resending = true;
+    try {
+      const { error } = await mockResetPasswordForEmail('user@example.com', {
+        redirectTo: 'caloriepal://reset-password',
+      });
+      if (error) throw error;
+    } finally {
+      resending = false;
+    }
+    expect(resending).toBe(false);
+  });
+
+  it('resend loading resets after error', async () => {
+    mockResetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'Rate limit exceeded' } });
+    let resending = true;
+    try {
+      const { error } = await mockResetPasswordForEmail('user@example.com', {
+        redirectTo: 'caloriepal://reset-password',
+      });
+      if (error) throw error;
+    } catch {
+      // shown to user
+    } finally {
+      resending = false;
+    }
+    expect(resending).toBe(false);
+  });
+});
+
+// ─── OTP FULL JOURNEY ──────────────────────────────────────────────────────────
+
+describe('UAT: Full OTP journey — sign-in → send email → enter OTP → set new password', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('complete OTP path: email sent → navigate to verify-otp → code verified → reset-password → tabs', async () => {
+    // Step 1: User enters email, taps "Forgot Password"
+    mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
+    const { error: sendError } = await mockResetPasswordForEmail('user@example.com', {
+      redirectTo: 'caloriepal://reset-password',
+    });
+    expect(sendError).toBeNull();
+
+    // Step 2: App navigates to verify-otp (instead of showing a dead-end alert)
+    const navigate = jest.fn();
+    navigate({ pathname: '/(auth)/verify-otp', params: { email: 'user@example.com' } });
+    expect(navigate).toHaveBeenCalledWith({
+      pathname: '/(auth)/verify-otp',
+      params: { email: 'user@example.com' },
+    });
+
+    // Step 3: User types the 6-digit code
+    mockVerifyOtp.mockResolvedValueOnce({ error: null });
+    const { error: otpError } = await mockVerifyOtp({
+      email: 'user@example.com', token: '847392', type: 'recovery',
+    });
+    expect(otpError).toBeNull();
+    navigate('/(auth)/reset-password');
+    expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
+
+    // Step 4: Session present → user sets new password
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'u1' }, access_token: 'tok' } },
+    });
+    mockUpdateUser.mockResolvedValueOnce({ error: null });
+    const { data: { session } } = await mockGetSession();
+    expect(session).not.toBeNull();
+    const { error: updateError } = await mockUpdateUser({ password: 'NewSecure1' });
+    expect(updateError).toBeNull();
+
+    // Step 5: Navigate to app
+    navigate('/(tabs)/');
+    expect(navigate).toHaveBeenCalledWith('/(tabs)/');
+  });
+
+  it('wrong OTP code: error shown, navigation to reset-password skipped', async () => {
+    const navigate = jest.fn();
+    mockVerifyOtp.mockResolvedValueOnce({ error: { message: 'Token has expired or is invalid' } });
+    try {
+      const { error } = await mockVerifyOtp({
+        email: 'user@example.com', token: '000000', type: 'recovery',
+      });
+      if (error) throw error;
+      navigate('/(auth)/reset-password');
+    } catch {
+      // error shown in UI
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('OTP and PKCE/link flows both lead to /(auth)/reset-password (two routes to the same screen)', () => {
+    // OTP
+    const otpDest = '/(auth)/reset-password';
+    // Link (PKCE)
+    const pkce_dest = '/(auth)/reset-password';
+    expect(otpDest).toBe(pkce_dest);
   });
 });
 

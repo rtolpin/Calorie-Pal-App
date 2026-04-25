@@ -64,10 +64,9 @@ export default function SignInScreen() {
         redirectTo: 'caloriepal://reset-password',
       });
       if (error) throw error;
-      Alert.alert(
-        'Reset Email Sent ✉️',
-        `We've sent a password reset link to ${trimmed}. Open the link in the email to set a new password — it expires in 1 hour.`
-      );
+      // Navigate to OTP entry screen — the user types the 6-digit code from the email.
+      // This avoids the link-expiry / email-preload issues that plagued the link-only flow.
+      router.push({ pathname: '/(auth)/verify-otp', params: { email: trimmed } });
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
     } finally {

@@ -8,6 +8,7 @@ export default function AuthLayout() {
       <Stack.Screen name="create-account" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="reset-password" />
+      <Stack.Screen name="verify-otp" />
     </Stack>
   );
 }
