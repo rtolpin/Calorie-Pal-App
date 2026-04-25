@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
@@ -44,6 +45,9 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [replacing, setReplacing] = useState(false);
 
+  const goToEdit = () =>
+    router.push({ pathname: '/edit-exercise/[id]', params: { id: log.id } });
+
   const handleDelete = () => {
     Alert.alert(
       'Delete Exercise',
@@ -56,13 +60,17 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
   };
 
   const handlePhotoPress = () => {
-    if (!log.photo_url) return;
+    if (!log.photo_url) {
+      goToEdit();
+      return;
+    }
     Alert.alert(
       log.exercise_name,
       undefined,
       [
         { text: 'View Full Screen', onPress: () => setShowPhotoModal(true) },
         { text: 'Replace Photo', onPress: handleReplacePhoto },
+        { text: 'Edit Entry', onPress: goToEdit },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -143,6 +151,7 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
               style={styles.photoContainer}
               testID="photo-container"
               disabled={replacing}
+              accessibilityLabel={`Photo of ${log.exercise_name} — tap for options`}
             >
               <Image
                 source={{ uri: log.photo_url }}
@@ -151,17 +160,30 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
               />
             </TouchableOpacity>
           ) : (
-            <View style={styles.iconContainer}>
+            <TouchableOpacity
+              onPress={goToEdit}
+              style={styles.iconContainer}
+              testID="icon-container"
+              accessibilityRole="button"
+              accessibilityLabel={`${log.exercise_name} icon — tap to edit`}
+            >
               <Text style={styles.emoji}>{log.exercise_emoji}</Text>
-            </View>
+            </TouchableOpacity>
           )}
 
           <View style={styles.content}>
             {/* Tappable "View or Edit" strip — mirrors food card pattern */}
-            <View style={styles.entryHeader}>
-              <Ionicons name="eye-outline" size={12} color={Colors.secondary} />
+            <TouchableOpacity
+              onPress={goToEdit}
+              style={styles.entryHeader}
+              testID="edit-header-btn"
+              accessibilityRole="button"
+              accessibilityLabel="View or edit this entry"
+            >
+              <Ionicons name="pencil-outline" size={12} color={Colors.secondary} />
               <Text style={styles.entryHeaderText}>View or Edit this Entry</Text>
-            </View>
+              <Ionicons name="chevron-forward-outline" size={12} color={Colors.secondary} />
+            </TouchableOpacity>
 
             <Text style={styles.exerciseName} numberOfLines={1}>
               {log.exercise_name}
@@ -205,8 +227,20 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
 
         {/* ── action bar ── */}
         <View style={styles.actionRow}>
+          <TouchableOpacity
+            onPress={goToEdit}
+            style={styles.actionBtn}
+            testID="edit-btn"
+            accessibilityRole="button"
+            accessibilityLabel="Edit this exercise"
+          >
+            <Ionicons name="pencil-outline" size={18} color={Colors.secondary} />
+            <Text style={styles.actionBtnText}>Edit</Text>
+          </TouchableOpacity>
+
           {onToggleFavorite && (
             <>
+              <View style={styles.actionDivider} />
               <TouchableOpacity
                 onPress={onToggleFavorite}
                 style={styles.actionBtn}
@@ -223,9 +257,10 @@ export function ExerciseLogCard({ log, index = 0, onDelete, isFavorite, onToggle
                   {isFavorite ? 'Saved' : 'Favorite'}
                 </Text>
               </TouchableOpacity>
-              <View style={styles.actionDivider} />
             </>
           )}
+
+          <View style={styles.actionDivider} />
 
           <TouchableOpacity
             onPress={handleDelete}

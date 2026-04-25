@@ -78,6 +78,10 @@ export default function RootLayout() {
           options={{ animation: 'slide_from_right' }}
         />
         <Stack.Screen
+          name="edit-exercise/[id]"
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
           name="log-exercise"
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />

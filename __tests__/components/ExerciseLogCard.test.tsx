@@ -5,9 +5,10 @@ import { ExerciseLogCard } from '../../components/ExerciseLogCard';
 import { ExerciseLog } from '../../types';
 
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
-jest.mock('@expo/vector-icons', () => ({
-  Ionicons: 'Ionicons',
-}));
+jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (...args: any[]) => mockRouterPush(...args) } }));
 
 // auth / store / supabase / image picker — all mocked so the card renders cleanly
 jest.mock('../../store/authStore', () => ({
@@ -54,14 +55,19 @@ const LOG_WITH_PHOTO = { ...BASE_LOG, photo_url: 'https://example.com/run.jpg' }
 describe('ExerciseLogCard — no photo: emoji tile', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('renders the emoji when no photo_url is set', () => {
-    const { queryByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+  it('renders an icon-container (not photo-container) when no photo_url', () => {
+    const { queryByTestId, getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     expect(queryByTestId('photo-container')).toBeNull();
+    expect(getByTestId('icon-container')).toBeTruthy();
   });
 
-  it('does not render a photo-container touchable when no photo', () => {
-    const { queryByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
-    expect(queryByTestId('photo-container')).toBeNull();
+  it('icon-container is tappable and navigates to the edit screen', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('icon-container'));
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/edit-exercise/[id]',
+      params: { id: BASE_LOG.id },
+    });
   });
 });
 
@@ -110,14 +116,26 @@ describe('ExerciseLogCard — photo present: action sheet', () => {
     expect(Alert.alert).toHaveBeenCalledWith(LOG_WITH_PHOTO.exercise_name, undefined, expect.any(Array));
   });
 
-  it('action sheet includes View Full Screen, Replace Photo, and Cancel', () => {
+  it('action sheet includes View Full Screen, Replace Photo, Edit Entry, and Cancel', () => {
     const { getByTestId } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
     fireEvent.press(getByTestId('photo-container'));
     const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
     const labels = buttons.map((b: any) => b.text);
     expect(labels).toContain('View Full Screen');
     expect(labels).toContain('Replace Photo');
+    expect(labels).toContain('Edit Entry');
     expect(labels).toContain('Cancel');
+  });
+
+  it('"Edit Entry" in the photo action sheet navigates to the edit screen', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={LOG_WITH_PHOTO} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('photo-container'));
+    const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
+    buttons.find((b: any) => b.text === 'Edit Entry')?.onPress?.();
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/edit-exercise/[id]',
+      params: { id: LOG_WITH_PHOTO.id },
+    });
   });
 
   it('Cancel button has cancel style', () => {
@@ -172,6 +190,35 @@ describe('ExerciseLogCard — Replace Photo flow', () => {
       expect.anything(),
       expect.anything(),
     );
+  });
+});
+
+// ─── Edit button ─────────────────────────────────────────────────────────────
+
+describe('ExerciseLogCard — Edit button', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('Edit button is present in the action bar', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('edit-btn')).toBeTruthy();
+  });
+
+  it('Edit button navigates to the edit-exercise screen with the correct id', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('edit-btn'));
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/edit-exercise/[id]',
+      params: { id: BASE_LOG.id },
+    });
+  });
+
+  it('edit-header-btn is tappable and navigates to edit', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    fireEvent.press(getByTestId('edit-header-btn'));
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/edit-exercise/[id]',
+      params: { id: BASE_LOG.id },
+    });
   });
 });
 
@@ -244,9 +291,16 @@ describe('ExerciseLogCard — delete behaviour', () => {
 // ─── top entry header ─────────────────────────────────────────────────────────
 
 describe('ExerciseLogCard — top entry header', () => {
+  beforeEach(() => jest.clearAllMocks());
+
   it('renders "View or Edit this Entry" text', () => {
     const { getByText } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
     expect(getByText('View or Edit this Entry')).toBeTruthy();
+  });
+
+  it('header is now a TouchableOpacity (has testID edit-header-btn)', () => {
+    const { getByTestId } = render(<ExerciseLogCard log={BASE_LOG} onDelete={jest.fn()} />);
+    expect(getByTestId('edit-header-btn')).toBeTruthy();
   });
 });
 

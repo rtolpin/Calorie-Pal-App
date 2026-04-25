@@ -44,12 +44,20 @@ export default function ResetPasswordScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
+      );
+      const { error } = await Promise.race([
+        supabase.auth.updateUser({ password: newPassword }),
+        timeout,
+      ]);
       if (error) throw error;
+      // updateUser with a recovery token creates a valid authenticated session —
+      // navigate directly to the app instead of asking the user to sign in again.
       Alert.alert(
         'Password Updated ✅',
-        'Your password has been changed successfully. Please sign in with your new password.',
-        [{ text: 'Sign In', onPress: () => router.replace('/(auth)/sign-in') }]
+        'Your password has been changed successfully.',
+        [{ text: 'Continue', onPress: () => router.replace('/(tabs)/') }]
       );
     } catch (e: any) {
       const msg = e?.message ?? '';

@@ -14,7 +14,13 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import { useAuthStore } from '../../store/authStore';
 import { useFoodLogStore } from '../../store/foodLogStore';
 import { useExerciseLogStore } from '../../store/exerciseLogStore';
@@ -224,6 +230,45 @@ export default function JournalScreen() {
   const [wellnessRefreshKey, setWellnessRefreshKey] = useState(0);
 
   const isLoading = foodLoading || exerciseLoading;
+
+  // ── Scroll-to-hide header ────────────────────────────────────────────────────
+  const [headerHeight, setHeaderHeight] = useState(220);
+  const headerHeightSV = useSharedValue(220);
+  const headerTranslationY = useSharedValue(0);
+  const prevScrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const y = event.contentOffset.y;
+      if (y <= 0) {
+        headerTranslationY.value = 0;
+        prevScrollY.value = y;
+        return;
+      }
+      const diff = y - prevScrollY.value;
+      prevScrollY.value = y;
+      headerTranslationY.value = Math.max(
+        Math.min(headerTranslationY.value - diff, 0),
+        -headerHeightSV.value,
+      );
+    },
+    onEndDrag: () => {
+      if (headerTranslationY.value < -headerHeightSV.value / 2) {
+        headerTranslationY.value = withSpring(-headerHeightSV.value, { damping: 20, stiffness: 150 });
+      } else {
+        headerTranslationY.value = withSpring(0, { damping: 20, stiffness: 150 });
+      }
+    },
+    onMomentumEnd: (event) => {
+      if (event.contentOffset.y <= 0) {
+        headerTranslationY.value = withSpring(0, { damping: 20, stiffness: 150 });
+      }
+    },
+  });
+
+  const animatedHeaderStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: headerTranslationY.value }],
+  }));
 
   useFocusEffect(
     useCallback(() => {
@@ -532,166 +577,14 @@ export default function JournalScreen() {
       {isGuest && <GuestBanner />}
       {!isOnline && <OfflineBanner />}
 
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>📓 Journal</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.noteBtn}
-              onPress={() => router.push('/notes')}
-              accessibilityLabel="Open journal notes"
-            >
-              <Ionicons name="journal-outline" size={16} color={Colors.primary} />
-              <Text style={styles.noteBtnText}>Notes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addExerciseBtn}
-              onPress={() => router.push('/log-exercise')}
-              accessibilityRole="button"
-              accessibilityLabel="Log an exercise"
-            >
-              <Ionicons name="fitness-outline" size={18} color={Colors.secondary} />
-              <Text style={styles.addExerciseText}>Log Exercise</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={18} color={Colors.textLight} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search meals & exercises..."
-            placeholderTextColor={Colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color={Colors.textLight} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Date filter */}
-        <View style={styles.segmentedControl}>
-          {FILTERS.map((f, i) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[
-                styles.segment,
-                filter === f.key && styles.segmentActive,
-                i === 0 && styles.segmentFirst,
-                i === FILTERS.length - 1 && styles.segmentLast,
-              ]}
-              onPress={() => setFilter(f.key)}
-            >
-              <Text style={[styles.segmentText, filter === f.key && styles.segmentTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Type filter */}
-        <View style={styles.typeFilterRow}>
-          {TYPE_FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.typeChip, entryType === f.key && styles.typeChipActive]}
-              onPress={() => setEntryType(f.key)}
-            >
-              <Text style={styles.typeEmoji}>{f.emoji}</Text>
-              <Text style={[styles.typeText, entryType === f.key && styles.typeTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Custom date range — shown only when Custom filter is active */}
-        {filter === 'custom' && (
-          <View style={styles.customDateSection}>
-            <View style={styles.customDateRow}>
-              <View style={styles.customDateField}>
-                <Text style={styles.customDateLabel}>From</Text>
-                <TextInput
-                  style={styles.customDateInput}
-                  value={customFromInput}
-                  onChangeText={(v) => { setCustomFromInput(v); setCustomDateError(''); }}
-                  placeholder="MM/DD/YYYY"
-                  placeholderTextColor={Colors.textMuted}
-                  maxLength={10}
-                  keyboardType="numbers-and-punctuation"
-                  returnKeyType="next"
-                  accessibilityLabel="Filter from date"
-                />
-              </View>
-              <Text style={styles.customDateArrow}>→</Text>
-              <View style={styles.customDateField}>
-                <Text style={styles.customDateLabel}>To</Text>
-                <TextInput
-                  style={styles.customDateInput}
-                  value={customToInput}
-                  onChangeText={(v) => { setCustomToInput(v); setCustomDateError(''); }}
-                  placeholder="MM/DD/YYYY"
-                  placeholderTextColor={Colors.textMuted}
-                  maxLength={10}
-                  keyboardType="numbers-and-punctuation"
-                  returnKeyType="search"
-                  onSubmitEditing={handleApplyCustomDate}
-                  accessibilityLabel="Filter to date"
-                />
-              </View>
-              <TouchableOpacity
-                onPress={handleApplyCustomDate}
-                style={styles.customDateApplyBtn}
-                accessibilityLabel="Apply date filter"
-              >
-                <Ionicons name="search" size={16} color={Colors.textWhite} />
-              </TouchableOpacity>
-            </View>
-
-            {customDateError ? (
-              <Text style={styles.customDateError}>{customDateError}</Text>
-            ) : (customFrom || customTo) ? (
-              <View style={styles.customDateAppliedRow}>
-                <Text style={styles.customDateAppliedText}>
-                  Showing {allEntries.length} {allEntries.length === 1 ? 'result' : 'results'}
-                </Text>
-                <TouchableOpacity onPress={handleClearCustomDate} accessibilityLabel="Clear date filter">
-                  <Text style={styles.customDateClearText}>Clear</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
-
-      {/* Quick Fill row — only shown on Today filter */}
-      {filter === 'today' && (
-        <View style={styles.quickFillRow}>
-          <TouchableOpacity style={styles.quickFillBtn} onPress={handleRepeatYesterday}>
-            <Ionicons name="refresh-outline" size={14} color={Colors.secondary} />
-            <Text style={styles.quickFillText}>Repeat Yesterday</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.quickFillBtn, currentTemplate && styles.quickFillBtnAlt]}
-            onPress={currentTemplate ? handleApplyTemplate : handleSaveTemplate}
-            disabled={applyingTemplate}
-          >
-            <Ionicons
-              name={currentTemplate ? 'clipboard-outline' : 'save-outline'}
-              size={14}
-              color={currentTemplate ? Colors.primary : Colors.textLight}
-            />
-            <Text style={[styles.quickFillText, currentTemplate && { color: Colors.primary }]}>
-              {currentTemplate ? 'Apply Saved Template' : 'Save Today as Template'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.screenBody}>
+        {/* ── Scroll content (behind the floating header) ── */}
+        <Animated.ScrollView
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          contentContainerStyle={[styles.content, { paddingTop: headerHeight }]}
+          showsVerticalScrollIndicator={false}
+        >
         {/* Today's wellness banner — always shown when on Today filter */}
         {filter === 'today' && wellnessMap[todayStr] && (
           <Animated.View entering={FadeInDown.springify()} style={styles.todayWellnessSection}>
@@ -737,7 +630,177 @@ export default function JournalScreen() {
             renderDayGroup(date, grouped[date], dayCtx)
           )
         )}
-      </ScrollView>
+        </Animated.ScrollView>
+
+        {/* ── Floating header — slides off-screen on scroll-down ── */}
+        <Animated.View
+          style={[styles.headerFloat, animatedHeaderStyle]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            setHeaderHeight(h);
+            headerHeightSV.value = h;
+          }}
+        >
+          <View style={styles.header}>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>📓 Journal</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.noteBtn}
+                  onPress={() => router.push('/notes')}
+                  accessibilityLabel="Open journal notes"
+                >
+                  <Ionicons name="journal-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.noteBtnText}>Notes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addExerciseBtn}
+                  onPress={() => router.push('/log-exercise')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log an exercise"
+                >
+                  <Ionicons name="fitness-outline" size={18} color={Colors.secondary} />
+                  <Text style={styles.addExerciseText}>Log Exercise</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.searchBar}>
+              <Ionicons name="search-outline" size={18} color={Colors.textLight} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search meals & exercises..."
+                placeholderTextColor={Colors.textMuted}
+                value={search}
+                onChangeText={setSearch}
+              />
+              {search ? (
+                <TouchableOpacity onPress={() => setSearch('')}>
+                  <Ionicons name="close-circle" size={18} color={Colors.textLight} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Date filter */}
+            <View style={styles.segmentedControl}>
+              {FILTERS.map((f, i) => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[
+                    styles.segment,
+                    filter === f.key && styles.segmentActive,
+                    i === 0 && styles.segmentFirst,
+                    i === FILTERS.length - 1 && styles.segmentLast,
+                  ]}
+                  onPress={() => setFilter(f.key)}
+                >
+                  <Text style={[styles.segmentText, filter === f.key && styles.segmentTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Type filter */}
+            <View style={styles.typeFilterRow}>
+              {TYPE_FILTERS.map((f) => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.typeChip, entryType === f.key && styles.typeChipActive]}
+                  onPress={() => setEntryType(f.key)}
+                >
+                  <Text style={styles.typeEmoji}>{f.emoji}</Text>
+                  <Text style={[styles.typeText, entryType === f.key && styles.typeTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Custom date range — shown only when Custom filter is active */}
+            {filter === 'custom' && (
+              <View style={styles.customDateSection}>
+                <View style={styles.customDateRow}>
+                  <View style={styles.customDateField}>
+                    <Text style={styles.customDateLabel}>From</Text>
+                    <TextInput
+                      style={styles.customDateInput}
+                      value={customFromInput}
+                      onChangeText={(v) => { setCustomFromInput(v); setCustomDateError(''); }}
+                      placeholder="MM/DD/YYYY"
+                      placeholderTextColor={Colors.textMuted}
+                      maxLength={10}
+                      keyboardType="numbers-and-punctuation"
+                      returnKeyType="next"
+                      accessibilityLabel="Filter from date"
+                    />
+                  </View>
+                  <Text style={styles.customDateArrow}>→</Text>
+                  <View style={styles.customDateField}>
+                    <Text style={styles.customDateLabel}>To</Text>
+                    <TextInput
+                      style={styles.customDateInput}
+                      value={customToInput}
+                      onChangeText={(v) => { setCustomToInput(v); setCustomDateError(''); }}
+                      placeholder="MM/DD/YYYY"
+                      placeholderTextColor={Colors.textMuted}
+                      maxLength={10}
+                      keyboardType="numbers-and-punctuation"
+                      returnKeyType="search"
+                      onSubmitEditing={handleApplyCustomDate}
+                      accessibilityLabel="Filter to date"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleApplyCustomDate}
+                    style={styles.customDateApplyBtn}
+                    accessibilityLabel="Apply date filter"
+                  >
+                    <Ionicons name="search" size={16} color={Colors.textWhite} />
+                  </TouchableOpacity>
+                </View>
+
+                {customDateError ? (
+                  <Text style={styles.customDateError}>{customDateError}</Text>
+                ) : (customFrom || customTo) ? (
+                  <View style={styles.customDateAppliedRow}>
+                    <Text style={styles.customDateAppliedText}>
+                      Showing {allEntries.length} {allEntries.length === 1 ? 'result' : 'results'}
+                    </Text>
+                    <TouchableOpacity onPress={handleClearCustomDate} accessibilityLabel="Clear date filter">
+                      <Text style={styles.customDateClearText}>Clear</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+
+          {/* Quick Fill row — only shown on Today filter */}
+          {filter === 'today' && (
+            <View style={styles.quickFillRow}>
+              <TouchableOpacity style={styles.quickFillBtn} onPress={handleRepeatYesterday}>
+                <Ionicons name="refresh-outline" size={14} color={Colors.secondary} />
+                <Text style={styles.quickFillText}>Repeat Yesterday</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickFillBtn, currentTemplate && styles.quickFillBtnAlt]}
+                onPress={currentTemplate ? handleApplyTemplate : handleSaveTemplate}
+                disabled={applyingTemplate}
+              >
+                <Ionicons
+                  name={currentTemplate ? 'clipboard-outline' : 'save-outline'}
+                  size={14}
+                  color={currentTemplate ? Colors.primary : Colors.textLight}
+                />
+                <Text style={[styles.quickFillText, currentTemplate && { color: Colors.primary }]}>
+                  {currentTemplate ? 'Apply Saved Template' : 'Save Today as Template'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
+      </View>
 
       {/* Journal notes + mood modal */}
       <Modal
@@ -806,6 +869,20 @@ export default function JournalScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
+  screenBody: { flex: 1 },
+  headerFloat: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.background,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   header: { padding: 16, paddingBottom: 0 },
   titleRow: {
     flexDirection: 'row',

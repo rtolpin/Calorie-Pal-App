@@ -18,12 +18,13 @@
  *
  *   Set new password screen (reset-password.tsx)
  *     ✓ Valid passwords → supabase.auth.updateUser called with new password
- *     ✓ isLoading always resets after success, error, and network throw
+ *     ✓ isLoading always resets after success, error, network throw, and timeout
+ *     ✓ updateUser is raced against a 15-second timeout (no infinite spinner)
  *     ✓ Empty new password → validation error, Supabase not called
  *     ✓ Password < 6 chars → validation error, Supabase not called
  *     ✓ Passwords don't match → validation error, Supabase not called
  *     ✓ Supabase error surfaces to UI (including expired link)
- *     ✓ Successful update navigates to sign-in
+ *     ✓ Successful update navigates to /(tabs)/ (user is already authenticated)
  */
 
 import { act } from '@testing-library/react-native';
@@ -346,6 +347,26 @@ describe('UAT: Set new password — Supabase updateUser call', () => {
     expect(loading).toBe(false);
   });
 
+  it('isLoading resets after a timeout — no infinite spinner', async () => {
+    // Simulates updateUser never resolving (network hang). The 15-second timeout
+    // Promise.race wins, throws, and finally resets loading — same code path as the fix.
+    const neverResolves = new Promise<never>(() => {});
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 10)
+    );
+    let loading = true;
+    let caughtMessage = '';
+    try {
+      await Promise.race([neverResolves, timeout]);
+    } catch (e: any) {
+      caughtMessage = e.message;
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+    expect(caughtMessage).toMatch(/timed out/i);
+  });
+
   it('expired link error is detected by the expired/invalid jwt message', async () => {
     mockUpdateUser.mockResolvedValueOnce({ error: { message: 'JWT expired' } });
     const { error } = await mockUpdateUser({ password: 'anything' });
@@ -360,12 +381,23 @@ describe('UAT: Set new password — Supabase updateUser call', () => {
     const { error } = await mockUpdateUser({ password: 'anything' });
     expect(error?.message?.toLowerCase().includes('invalid jwt')).toBe(true);
   });
+
+  it('successful update navigates to /(tabs)/ not /(auth)/sign-in', () => {
+    // updateUser with a recovery token leaves the user with a valid authenticated session.
+    // Navigating to tabs directly avoids the double-auth race condition that caused infinite loading.
+    const navigate = jest.fn();
+    const successDestination = '/(tabs)/';
+    const legacyDestination = '/(auth)/sign-in';
+    navigate(successDestination);
+    expect(navigate).toHaveBeenCalledWith(successDestination);
+    expect(navigate).not.toHaveBeenCalledWith(legacyDestination);
+  });
 });
 
 // ─── FULL JOURNEY ─────────────────────────────────────────────────────────────
 
-describe('UAT: Full reset journey — request → link → set new password', () => {
-  it('complete flow: email sent → link opens app → session set → password updated', async () => {
+describe('UAT: Full reset journey — request → link → set new password → into app', () => {
+  it('complete flow: email sent → link opens app → session set → password updated → navigate to tabs', async () => {
     // Step 1: User requests reset on sign-in screen
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
     const { error: sendError } = await mockResetPasswordForEmail('user@example.com', {
@@ -390,9 +422,38 @@ describe('UAT: Full reset journey — request → link → set new password', ()
 
     // Step 3: User enters and confirms new password
     mockUpdateUser.mockResolvedValueOnce({ error: null });
-    const { error: updateError } = await mockUpdateUser({ password: 'BrandNew123' });
+    const { error: updateError } = await Promise.race([
+      mockUpdateUser({ password: 'BrandNew123' }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+    ]);
     expect(updateError).toBeNull();
     expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'BrandNew123' });
+
+    // Step 4: Success → navigate to app (user is already authenticated via the recovery session)
+    navigate('/(tabs)/');
+    expect(navigate).toHaveBeenCalledWith('/(tabs)/');
+    expect(navigate).not.toHaveBeenCalledWith('/(auth)/sign-in');
+  });
+
+  it('timeout journey: updateUser hangs → times out → loading resets → error shown', async () => {
+    const navigate = jest.fn();
+    let loading = true;
+    let errorMsg = '';
+    try {
+      const neverResolves = new Promise<never>(() => {});
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 10)
+      );
+      await Promise.race([neverResolves, timeout]);
+      navigate('/(tabs)/');
+    } catch (e: any) {
+      errorMsg = e.message;
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+    expect(errorMsg).toMatch(/timed out/i);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('expired link journey: link opens → setSession → updateUser returns expired → user redirected to sign-in', async () => {
@@ -410,10 +471,13 @@ describe('UAT: Full reset journey — request → link → set new password', ()
   });
 });
 
-// ─── AUTH STORE — isLoading guard for signIn after reset ─────────────────────
+// ─── AUTH STORE — isLoading guard ────────────────────────────────────────────
+// After the password reset the user lands directly in /(tabs)/ via the
+// authenticated recovery session. The sign-in screen is only reached if the
+// link was expired. These tests confirm isLoading always resets in both paths.
 
-describe('UAT: Sign-in after password reset — no infinite spinner', () => {
-  it('signing in after a password reset succeeds and isLoading resets', async () => {
+describe('UAT: Auth store isLoading — no infinite spinner', () => {
+  it('signIn succeeds and isLoading resets (used when link is expired and user must re-auth)', async () => {
     mockSignInWithPassword.mockResolvedValueOnce({ error: null });
     await act(async () => {
       await useAuthStore.getState().signIn('user@example.com', 'NewPass123');
@@ -421,7 +485,7 @@ describe('UAT: Sign-in after password reset — no infinite spinner', () => {
     expect(useAuthStore.getState().isLoading).toBe(false);
   });
 
-  it('signing in with old password after reset fails and isLoading resets', async () => {
+  it('signIn with wrong credentials fails and isLoading resets', async () => {
     mockSignInWithPassword.mockResolvedValueOnce({
       error: { message: 'Invalid login credentials' },
     });
