@@ -230,9 +230,12 @@ export default function LogExerciseScreen() {
               </Text>
             )}
             <View style={styles.disclaimerBox}>
-              <Text style={styles.disclaimerTitle}>⚠️ Calorie Estimate Disclaimer</Text>
+              <Text style={styles.disclaimerTitle}>⚠️ Calorie Estimate &amp; Safety Disclaimer</Text>
               <Text style={styles.disclaimerText}>
-                Calories burned are estimated using average MET (Metabolic Equivalent of Task) values for each activity. Actual calories burned depend on your body weight, age, fitness level, and exercise intensity — and may differ significantly from this estimate. For precise tracking, consider using a heart rate monitor or fitness tracker.
+                Calories burned are estimated using average MET (Metabolic Equivalent of Task) values and may differ significantly from your actual burn based on body weight, age, fitness level, and intensity. For precise tracking, use a heart rate monitor or fitness tracker.
+              </Text>
+              <Text style={[styles.disclaimerText, { marginTop: 6, fontStyle: 'italic' }]}>
+                Consult your physician or a qualified healthcare provider before beginning or significantly changing an exercise program, especially if you have a heart condition, joint problems, or any medical condition.
               </Text>
             </View>
           </Animated.View>

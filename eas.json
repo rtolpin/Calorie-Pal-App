@@ -33,7 +33,8 @@
       "ios": {
         "appleId": "rebecca.tolpin@gmail.com",
         "ascAppId": "6763131173",
-        "appleTeamId": "DT6AB3WSSX"
+        "appleTeamId": "DT6AB3WSSX",
+        "metadataPath": "./store.config.json"
       }
     }
   }

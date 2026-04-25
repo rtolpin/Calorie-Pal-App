@@ -306,17 +306,71 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const handleDeleteAccount = () => {
+  const handleChangePassword = async () => {
+    const userEmail = session?.user.email;
+    if (!userEmail) return;
     Alert.alert(
-      '⚠️ Delete Account',
-      'This will permanently delete your account and all your meal data. This cannot be undone.',
+      'Change Password',
+      `We'll send a password reset link to ${userEmail}. Check your inbox to set a new password.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete Account',
+          text: 'Send Reset Email',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.auth.resetPasswordForEmail(userEmail);
+              if (error) throw error;
+              Alert.alert('Email Sent ✉️', `A password reset link has been sent to ${userEmail}.`);
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '⚠️ Delete Account',
+      'This will permanently delete all your meal logs, exercise logs, and profile data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Everything',
           style: 'destructive',
           onPress: () =>
-            Alert.alert('Contact Support', 'Please email support@caloriepal.app to delete your account.'),
+            Alert.alert(
+              'Are you absolutely sure?',
+              'All your data will be erased immediately. Your account login will be deactivated within 24 hours.',
+              [
+                { text: 'Go Back', style: 'cancel' },
+                {
+                  text: 'Yes, Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const uid = session?.user.id;
+                      if (uid) {
+                        // Delete all user data — food logs, exercise logs, profile
+                        await supabase.from('food_logs').delete().eq('user_id', uid);
+                        await supabase.from('exercise_logs').delete().eq('user_id', uid);
+                        await supabase.from('profiles').delete().eq('id', uid);
+                      }
+                      clearLogs();
+                      await signOut();
+                      router.replace('/(auth)/welcome');
+                      Alert.alert(
+                        'Account Deleted',
+                        'All your data has been deleted. Your login credentials will be fully removed within 24 hours. Thank you for using CaloriePal.'
+                      );
+                    } catch {
+                      Alert.alert('Error', 'Failed to delete account data. Please try again or contact support@caloriepal.app.');
+                    }
+                  },
+                },
+              ]
+            ),
         },
       ]
     );
@@ -410,7 +464,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.lossRateWarning}>
                 <Text style={styles.lossRateWarningText}>
-                  ⚠️ Losing more than 1–1.5 lb/week increases risk of muscle loss, nutritional deficiencies, and metabolic slowdown. A deficit below 1,200 cal/day is not recommended without medical supervision.
+                  ⚠️ Losing more than 1–1.5 lb/week increases risk of muscle loss, nutritional deficiencies, and metabolic slowdown. A deficit below 1,200 cal/day is not recommended without medical supervision. Consult your physician or a registered dietitian before pursuing aggressive weight loss, especially if you have a medical condition, take medications, or are pregnant.
                 </Text>
               </View>
             </View>
@@ -670,7 +724,7 @@ export default function ProfileScreen() {
           </Text>
           <Text style={styles.disclaimerSourcesTitle}>Authoritative sources:</Text>
           {[
-            { label: 'NIH — Understanding Calories', url: 'https://www.nhlbi.nih.gov/health/educational/lose_wt/calories.htm' },
+            { label: 'NIH — Healthy Weight', url: 'https://www.nhlbi.nih.gov/health/educational/lose_wt/calories.htm' },
             { label: 'USDA Dietary Guidelines', url: 'https://www.dietaryguidelines.gov' },
             { label: 'Academy of Nutrition and Dietetics', url: 'https://www.eatright.org' },
             { label: 'Mifflin et al. (1990) — Am J Clin Nutr', url: 'https://pubmed.ncbi.nlm.nih.gov/2305711/' },
@@ -711,6 +765,20 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.card}>
           <Text style={styles.sectionTitle}>Data & Account</Text>
 
+          {/* Data collection notice */}
+          <View style={styles.dataNoticeBox}>
+            <Text style={styles.dataNoticeTitle}>📋 Data We Collect</Text>
+            <Text style={styles.dataNoticeText}>
+              CaloriePal collects meal photos, food logs, exercise logs, and personal health metrics (weight, height, age, goals) to provide personalised tracking. Meal photos are analysed by OpenAI's GPT-4o and nutrition suggestions are generated by Anthropic's Claude AI. Your data is stored securely via Supabase.
+            </Text>
+            <TouchableOpacity onPress={() => Linking.openURL('https://jazzy-flat-9c9.notion.site/CaloriePal-Privacy-Policy-34bd422b0970803aac19e110683e3eae')} style={styles.privacyLink}>
+              <Text style={styles.privacyLinkText}>↗ View Privacy Policy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => Linking.openURL('https://jazzy-flat-9c9.notion.site/CaloriePal-Support-34ad422b097080a5aca0f453ce7ffe13')} style={styles.privacyLink}>
+              <Text style={styles.privacyLinkText}>↗ Contact Support</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity style={styles.menuItem} onPress={handleExportCSV}>
             <Ionicons name="download-outline" size={20} color={Colors.secondary} />
             <Text style={styles.menuText}>📤 Export Data as CSV</Text>
@@ -718,7 +786,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           {!isGuest && (
-            <TouchableOpacity style={styles.menuItem}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleChangePassword}>
               <Ionicons name="lock-closed-outline" size={20} color={Colors.textLight} />
               <Text style={styles.menuText}>🔒 Change Password</Text>
               <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
@@ -1030,4 +1098,16 @@ const styles = StyleSheet.create({
   deleteRow: { alignItems: 'center', marginTop: 8 },
   deleteText: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textMuted, textDecorationLine: 'underline' },
   version: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 8, marginBottom: 16 },
+  dataNoticeBox: {
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dataNoticeTitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text, marginBottom: 6 },
+  dataNoticeText: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, lineHeight: 18, marginBottom: 10 },
+  privacyLink: { paddingVertical: 3 },
+  privacyLinkText: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.secondary, textDecorationLine: 'underline' },
 });

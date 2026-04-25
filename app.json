@@ -65,6 +65,7 @@
     },
     "owner": "rtolpin",
     "runtimeVersion": "1.0.0",
+    "privacy": "unlisted",
     "updates": {
       "url": "https://u.expo.dev/08689af9-b6cb-4966-800d-3acbb792032c"
     },

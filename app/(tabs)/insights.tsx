@@ -308,6 +308,11 @@ export default function InsightsScreen() {
 
           {isGuest ? (
             <View style={styles.guestTeaser}>
+              <View style={styles.guestDisclaimerBox}>
+                <Text style={styles.guestDisclaimerText}>
+                  ⚕️ All nutrition suggestions are for informational purposes only and are not a substitute for professional medical or dietary advice. Always consult a registered dietitian or qualified healthcare provider before making changes to your diet.
+                </Text>
+              </View>
               <Text style={styles.guestTeaserEmoji}>🔒</Text>
               <Text style={styles.guestTeaserTitle}>Personalized AI Suggestions</Text>
               <Text style={styles.guestTeaserText}>
@@ -399,7 +404,23 @@ const styles = StyleSheet.create({
   totalBurnedValue: { fontFamily: 'Nunito_800ExtraBold', fontSize: 16, color: Colors.success },
   suggestionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   refreshBtn: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.secondary },
-  guestTeaser: { alignItems: 'center', paddingVertical: 20 },
+  guestTeaser: { alignItems: 'center', paddingVertical: 12 },
+  guestDisclaimerBox: {
+    backgroundColor: '#EAF6FF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.secondary,
+    marginBottom: 16,
+    width: '100%',
+  },
+  guestDisclaimerText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.text,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
   guestTeaserEmoji: { fontSize: 48, marginBottom: 12 },
   guestTeaserTitle: { fontFamily: 'Nunito_800ExtraBold', fontSize: 18, color: Colors.text, marginBottom: 8, textAlign: 'center' },
   guestTeaserText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textLight, textAlign: 'center', lineHeight: 22, marginBottom: 16 },

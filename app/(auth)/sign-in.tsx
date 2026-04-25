@@ -16,6 +16,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/Colors';
 
 export default function SignInScreen() {
@@ -23,6 +24,7 @@ export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const validate = (): boolean => {
@@ -47,6 +49,27 @@ export default function SignInScreen() {
       Alert.alert('Sign In Failed', e.message || 'Please check your credentials and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/\S+@\S+\.\S+/.test(trimmed)) {
+      Alert.alert('Enter Your Email', 'Please enter your email address above, then tap Forgot Password.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed);
+      if (error) throw error;
+      Alert.alert(
+        'Reset Email Sent ✉️',
+        `We've sent a password reset link to ${trimmed}. Check your inbox and follow the link to set a new password.`
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -93,8 +116,8 @@ export default function SignInScreen() {
               error={errors.password}
             />
 
-            <TouchableOpacity style={styles.forgotRow}>
-              <Text style={styles.forgot}>Forgot Password?</Text>
+            <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword} disabled={resetLoading}>
+              <Text style={styles.forgot}>{resetLoading ? 'Sending…' : 'Forgot Password?'}</Text>
             </TouchableOpacity>
 
             <Button
