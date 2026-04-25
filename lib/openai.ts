@@ -37,7 +37,7 @@ export async function analyzeMealPhoto(base64Image: string): Promise<MealAnalysi
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'user',
@@ -46,7 +46,7 @@ export async function analyzeMealPhoto(base64Image: string): Promise<MealAnalysi
                 type: 'image_url',
                 image_url: {
                   url: `data:image/jpeg;base64,${base64Image}`,
-                  detail: 'high',
+                  detail: 'auto',
                 },
               },
               {
@@ -56,7 +56,7 @@ export async function analyzeMealPhoto(base64Image: string): Promise<MealAnalysi
             ],
           },
         ],
-        max_tokens: 1000,
+        max_tokens: 500,
         temperature: 0.3,
       }),
       signal: controller.signal,

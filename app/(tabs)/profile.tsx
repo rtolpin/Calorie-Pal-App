@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   Linking,
   ScrollView,
   Share,
@@ -11,10 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { useFoodLogStore } from '../../store/foodLogStore';
 import { GuestBanner } from '../../components/GuestBanner';
@@ -126,6 +130,7 @@ export default function ProfileScreen() {
   const [heightCm, setHeightCm] = useState('');
   const [ageInput, setAgeInput] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   // ── Daily targets ─────────────────────────────────────────────────────────
   const [calorieGoal, setCalorieGoal] = useState(String(profile?.daily_calorie_target || 2000));
@@ -218,6 +223,43 @@ export default function ProfileScreen() {
       Alert.alert('Error', 'Failed to save profile. Please try again.');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handlePickProfilePhoto = async () => {
+    if (isGuest) {
+      Alert.alert('Sign In Required', 'Create an account to add a profile photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64 || !session) return;
+
+    setAvatarLoading(true);
+    try {
+      const { base64 } = result.assets[0];
+      const fileName = `profile/${session.user.id}.jpg`;
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      const { error: uploadError } = await supabase.storage
+        .from('meal-photos')
+        .upload(fileName, bytes.buffer, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('meal-photos').getPublicUrl(fileName);
+      await updateProfile({ avatar_url: data.publicUrl });
+    } catch {
+      Alert.alert('Error', 'Failed to upload profile photo. Please try again.');
+    } finally {
+      setAvatarLoading(false);
     }
   };
 
@@ -401,16 +443,34 @@ export default function ProfileScreen() {
 
         {/* ── Avatar card ─────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-          <View>
+          <TouchableOpacity onPress={handlePickProfilePhoto} style={styles.avatarWrapper}>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            )}
+            {!isGuest && (
+              <View style={styles.avatarCameraBadge}>
+                {avatarLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.avatarCameraIcon}>📷</Text>
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>
               {isGuest ? 'Guest User' : profile?.name || 'User'}
             </Text>
             <Text style={styles.profileEmail}>
               {isGuest ? 'Not signed in' : session?.user.email || ''}
             </Text>
+            {!isGuest && (
+              <Text style={styles.avatarHint}>Tap photo to change</Text>
+            )}
           </View>
         </Animated.View>
 
@@ -835,15 +895,45 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.5)',
+  },
+  avatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  avatarCameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  avatarCameraIcon: { fontSize: 11 },
+  avatarHint: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
   },
   avatarText: { fontFamily: 'Nunito_800ExtraBold', fontSize: 22, color: Colors.textWhite },
   profileName: { fontFamily: 'Nunito_800ExtraBold', fontSize: 20, color: Colors.textWhite },

@@ -102,6 +102,20 @@ export async function setWaterCups(date: string, cups: number): Promise<void> {
   await AsyncStorage.setItem(`water_cups_${date}`, String(Math.max(0, cups)));
 }
 
+// Water goal (global, not per-date — user sets once)
+const WATER_GOAL_KEY = 'water_goal_cups';
+const DEFAULT_WATER_GOAL = 8;
+
+export async function getWaterGoal(): Promise<number> {
+  const raw = await AsyncStorage.getItem(WATER_GOAL_KEY);
+  return raw ? parseInt(raw, 10) : DEFAULT_WATER_GOAL;
+}
+
+export async function saveWaterGoal(cups: number): Promise<void> {
+  const clamped = Math.min(20, Math.max(1, cups));
+  await AsyncStorage.setItem(WATER_GOAL_KEY, String(clamped));
+}
+
 // Mood logging (keyed by date)
 export type Mood = 'great' | 'good' | 'okay' | 'low' | 'stressed' | 'tired';
 

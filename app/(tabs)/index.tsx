@@ -27,7 +27,8 @@ import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { MacroRow } from '../../components/ui/MacroBadge';
 import { Colors } from '../../constants/Colors';
 import { FoodLog, ExerciseLog } from '../../types';
-import { getGuestProfile, saveGuestProfile, getWaterCups, setWaterCups, getMood, setMood, Mood } from '../../lib/asyncStorage';
+import { getGuestProfile, saveGuestProfile, getWaterCups, setWaterCups, getWaterGoal, saveWaterGoal, getMood, setMood, Mood } from '../../lib/asyncStorage';
+import { toLocalDateStr, getLocalDate } from '../../lib/dateUtils';
 
 const MOTIVATIONAL_TIPS = [
   '💧 Staying hydrated can reduce hunger — aim for 8 glasses today!',
@@ -47,7 +48,7 @@ function getGreeting(): string {
 }
 
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateStr(new Date());
 }
 
 type JournalEntry =
@@ -65,14 +66,17 @@ export default function HomeScreen() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [guestCalorieGoal, setGuestCalorieGoal] = useState<number | null>(null);
   const [waterCups, setWaterCupsState] = useState(0);
+  const [waterGoal, setWaterGoalState] = useState(8);
+  const [editingWaterGoal, setEditingWaterGoal] = useState(false);
+  const [waterGoalInput, setWaterGoalInput] = useState('8');
   const [todayMood, setTodayMood] = useState<Mood | null>(null);
 
   const tip = MOTIVATIONAL_TIPS[new Date().getDay() % MOTIVATIONAL_TIPS.length];
   const todayStr = getTodayString();
   const isLoading = logsLoading || exerciseLoading;
 
-  const todayFoodLogs = logs.filter((l) => l.logged_at.startsWith(todayStr));
-  const todayExerciseLogs = exerciseLogs.filter((l) => l.logged_at.startsWith(todayStr));
+  const todayFoodLogs = logs.filter((l) => getLocalDate(l.logged_at) === todayStr);
+  const todayExerciseLogs = exerciseLogs.filter((l) => getLocalDate(l.logged_at) === todayStr);
 
   // Calorie math: consumed - burned = net, remaining = goal - net
   const totalCaloriesEaten = todayFoodLogs.reduce((s, l) => s + l.calories, 0);
@@ -116,6 +120,7 @@ export default function HomeScreen() {
     useCallback(() => {
       getWaterCups(todayStr).then(setWaterCupsState);
       getMood(todayStr).then(setTodayMood);
+      getWaterGoal().then((g) => { setWaterGoalState(g); setWaterGoalInput(String(g)); });
     }, [todayStr])
   );
 
@@ -123,6 +128,17 @@ export default function HomeScreen() {
     const next = Math.max(0, waterCups + delta);
     setWaterCupsState(next);
     await setWaterCups(todayStr, next);
+  };
+
+  const handleSaveWaterGoal = async () => {
+    const val = parseInt(waterGoalInput, 10);
+    if (!val || val < 1 || val > 20) {
+      Alert.alert('Invalid Goal', 'Please enter a water goal between 1 and 20 cups.');
+      return;
+    }
+    setWaterGoalState(val);
+    setEditingWaterGoal(false);
+    await saveWaterGoal(val);
   };
 
   const handleMoodSelect = async (mood: Mood) => {
@@ -187,7 +203,7 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInUp.springify()} style={styles.header}>
           <View>
             <Text style={styles.greeting}>
-              {getGreeting()}, {isGuest ? 'friend' : profile?.name || 'there'}! 👋
+              {getGreeting()}, {isGuest ? 'friend' : (profile?.name?.split(' ')[0] || 'there')}! 👋
             </Text>
             <Text style={styles.date}>
               {new Date().toLocaleDateString('en-US', {
@@ -358,27 +374,58 @@ export default function HomeScreen() {
         <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.waterCard}>
           <View style={styles.waterHeader}>
             <Text style={styles.waterTitle}>💧 Water Intake</Text>
-            <Text style={styles.waterGoal}>Goal: 8 cups</Text>
+            {editingWaterGoal ? (
+              <View style={styles.waterGoalEditRow}>
+                <TextInput
+                  style={styles.waterGoalInput}
+                  value={waterGoalInput}
+                  onChangeText={setWaterGoalInput}
+                  keyboardType="number-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  maxLength={2}
+                />
+                <Text style={styles.waterGoalInputLabel}>cups</Text>
+                <TouchableOpacity onPress={handleSaveWaterGoal} style={styles.waterGoalSaveBtn}>
+                  <Ionicons name="checkmark" size={16} color={Colors.textWhite} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditingWaterGoal(false)}>
+                  <Ionicons name="close" size={18} color={Colors.textLight} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => { setEditingWaterGoal(true); setWaterGoalInput(String(waterGoal)); }} style={styles.waterGoalBtn}>
+                <Text style={styles.waterGoal}>Goal: {waterGoal} cups</Text>
+                <Ionicons name="pencil-outline" size={12} color={Colors.textLight} />
+              </TouchableOpacity>
+            )}
           </View>
           <View style={styles.waterRow}>
             <TouchableOpacity style={styles.waterBtn} onPress={() => handleWaterChange(-1)}>
               <Text style={styles.waterBtnText}>−</Text>
             </TouchableOpacity>
             <View style={styles.waterCountContainer}>
-              <Text style={styles.waterCount}>{waterCups}</Text>
-              <Text style={styles.waterUnit}>cups today</Text>
+              <Text style={[styles.waterCount, waterCups >= waterGoal && styles.waterCountDone]}>
+                {waterCups}
+              </Text>
+              <Text style={styles.waterUnit}>
+                of {waterGoal} cups {waterCups >= waterGoal ? '✅' : ''}
+              </Text>
             </View>
             <TouchableOpacity style={[styles.waterBtn, styles.waterBtnAdd]} onPress={() => handleWaterChange(1)}>
               <Text style={[styles.waterBtnText, { color: Colors.textWhite }]}>+</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.waterDotsRow}>
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: Math.min(waterGoal, 12) }).map((_, i) => (
               <View
                 key={i}
                 style={[styles.waterDot, i < waterCups && styles.waterDotFilled]}
               />
             ))}
+            {waterGoal > 12 && (
+              <Text style={styles.waterDotsMore}>+{waterGoal - 12}</Text>
+            )}
           </View>
         </Animated.View>
 
@@ -629,7 +676,34 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   waterTitle: { fontFamily: 'Nunito_700Bold', fontSize: 16, color: Colors.text },
+  waterGoalBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   waterGoal: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterGoalEditRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  waterGoalInput: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.text,
+    borderWidth: 1.5,
+    borderColor: '#4FC3F7',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    width: 40,
+    textAlign: 'center',
+  },
+  waterGoalInputLabel: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterGoalSaveBtn: {
+    backgroundColor: '#4FC3F7',
+    borderRadius: 8,
+    padding: 4,
+  },
+  waterCountDone: { color: '#4FC3F7' },
+  waterDotsMore: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.textLight,
+    alignSelf: 'center',
+  },
   waterRow: {
     flexDirection: 'row',
     alignItems: 'center',

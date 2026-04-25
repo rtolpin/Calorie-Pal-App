@@ -138,6 +138,30 @@ describe('analyzeMealPhoto', () => {
     });
   });
 
+  describe('request configuration', () => {
+    it('uses gpt-4o-mini for faster analysis', async () => {
+      global.fetch = mockFetchOk(VALID_ANALYSIS);
+      await analyzeMealPhoto('base64data');
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.model).toBe('gpt-4o-mini');
+    });
+
+    it('uses detail:auto to reduce token usage', async () => {
+      global.fetch = mockFetchOk(VALID_ANALYSIS);
+      await analyzeMealPhoto('base64data');
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      const imageContent = body.messages[0].content.find((c: any) => c.type === 'image_url');
+      expect(imageContent.image_url.detail).toBe('auto');
+    });
+
+    it('caps response at 500 tokens', async () => {
+      global.fetch = mockFetchOk(VALID_ANALYSIS);
+      await analyzeMealPhoto('base64data');
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.max_tokens).toBe(500);
+    });
+  });
+
   describe('error handling', () => {
     it('throws on 429 rate limit error', async () => {
       global.fetch = mockFetchError(429, 'Rate limit exceeded');

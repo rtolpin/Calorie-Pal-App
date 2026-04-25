@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -20,8 +20,25 @@ import { GuestBanner } from '../../components/GuestBanner';
 import { OfflineBanner } from '../../components/ui/OfflineBanner';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { getWaterCups, getWaterGoal, getMood, Mood } from '../../lib/asyncStorage';
+import { toLocalDateStr } from '../../lib/dateUtils';
 import { FoodLog, ExerciseLog } from '../../types';
 import { Colors } from '../../constants/Colors';
+
+const MOOD_META: Record<Mood, { emoji: string; label: string }> = {
+  great: { emoji: '😄', label: 'Great' },
+  good: { emoji: '😊', label: 'Good' },
+  okay: { emoji: '😐', label: 'Okay' },
+  low: { emoji: '😞', label: 'Low' },
+  stressed: { emoji: '😤', label: 'Stressed' },
+  tired: { emoji: '😴', label: 'Tired' },
+};
+
+interface DailyWellness {
+  waterCups: number;
+  waterGoal: number;
+  mood: Mood | null;
+}
 
 type Filter = 'today' | 'week' | 'month' | 'all';
 type EntryType = 'all' | 'food' | 'exercise';
@@ -31,8 +48,8 @@ type JournalEntry =
 
 function formatDateHeader(dateStr: string): string {
   const date = new Date(dateStr + 'T12:00:00');
-  const today = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
+  const yesterday = toLocalDateStr(new Date(Date.now() - 86400000));
   if (dateStr === today) return 'Today';
   if (dateStr === yesterday) return 'Yesterday';
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -47,6 +64,8 @@ export default function JournalScreen() {
   const [filter, setFilter] = useState<Filter>('today');
   const [entryType, setEntryType] = useState<EntryType>('all');
   const [search, setSearch] = useState('');
+  const [wellnessMap, setWellnessMap] = useState<Record<string, DailyWellness>>({});
+  const [waterGoalVal, setWaterGoalVal] = useState(8);
 
   const isLoading = foodLoading || exerciseLoading;
 
@@ -54,14 +73,15 @@ export default function JournalScreen() {
     useCallback(() => {
       fetchLogs(session?.user.id, isGuest);
       fetchExerciseLogs(session?.user.id, isGuest);
+      getWaterGoal().then(setWaterGoalVal);
     }, [session?.user.id, isGuest])
   );
 
   const filterByDate = <T extends { logged_at: string }>(items: T[]): T[] => {
     const now = new Date();
     if (filter === 'today') {
-      const today = now.toISOString().split('T')[0];
-      return items.filter((l) => l.logged_at.startsWith(today));
+      const today = toLocalDateStr(now);
+      return items.filter((l) => toLocalDateStr(new Date(l.logged_at)) === today);
     }
     if (filter === 'week') {
       const cutoff = new Date(now.getTime() - 7 * 86400000);
@@ -101,7 +121,7 @@ export default function JournalScreen() {
   const grouped = useMemo(() => {
     const map: Record<string, JournalEntry[]> = {};
     allEntries.forEach((entry) => {
-      const date = entry.data.logged_at.split('T')[0];
+      const date = toLocalDateStr(new Date(entry.data.logged_at));
       if (!map[date]) map[date] = [];
       map[date].push(entry);
     });
@@ -109,6 +129,27 @@ export default function JournalScreen() {
   }, [allEntries]);
 
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  // Load water + mood for every visible date whenever the date list changes
+  useEffect(() => {
+    if (sortedDates.length === 0) return;
+    let cancelled = false;
+    const goal = waterGoalVal;
+    Promise.all(
+      sortedDates.map(async (date) => {
+        const [cups, mood] = await Promise.all([getWaterCups(date), getMood(date)]);
+        return { date, cups, mood };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      const map: Record<string, DailyWellness> = {};
+      results.forEach(({ date, cups, mood }) => {
+        map[date] = { waterCups: cups, waterGoal: goal, mood };
+      });
+      setWellnessMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [sortedDates.join(','), waterGoalVal]);
 
   const handleDeleteFood = (id: string) => deleteLog(id, session?.user.id, isGuest);
   const handleDeleteExercise = (id: string) => deleteExerciseLog(id, session?.user.id, isGuest);
@@ -241,6 +282,33 @@ export default function JournalScreen() {
                     <Text style={styles.dayNet}>= {Math.round(netCalories)} cal net</Text>
                   </View>
                 </View>
+
+                {/* Daily wellness summary — water + mood */}
+                {(() => {
+                  const w = wellnessMap[date];
+                  if (!w || (w.waterCups === 0 && !w.mood)) return null;
+                  return (
+                    <View style={styles.wellnessCard}>
+                      {w.waterCups > 0 && (
+                        <View style={styles.wellnessPill}>
+                          <Text style={styles.wellnessEmoji}>💧</Text>
+                          <Text style={styles.wellnessText}>
+                            {w.waterCups}/{w.waterGoal} cups
+                          </Text>
+                          {w.waterCups >= w.waterGoal && (
+                            <Text style={styles.wellnessDone}>✅</Text>
+                          )}
+                        </View>
+                      )}
+                      {w.mood && (
+                        <View style={styles.wellnessPill}>
+                          <Text style={styles.wellnessEmoji}>{MOOD_META[w.mood].emoji}</Text>
+                          <Text style={styles.wellnessText}>{MOOD_META[w.mood].label}</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 {dayEntries.map((entry) =>
                   entry.type === 'food' ? (
@@ -381,4 +449,28 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 64, marginBottom: 16 },
   emptyTitle: { fontFamily: 'Nunito_700Bold', fontSize: 18, color: Colors.text, marginBottom: 8 },
   emptySubtitle: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textLight },
+  wellnessCard: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+    flexWrap: 'wrap',
+  },
+  wellnessPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  wellnessEmoji: { fontSize: 14 },
+  wellnessText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: Colors.text,
+  },
+  wellnessDone: { fontSize: 12 },
 });

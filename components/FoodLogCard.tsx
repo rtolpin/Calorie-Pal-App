@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -31,6 +32,8 @@ function formatDateTime(isoString: string): string {
 }
 
 export function FoodLogCard({ log, index = 0, onDelete }: FoodLogCardProps) {
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+
   const handleDelete = () => {
     Alert.alert(
       'Delete Entry',
@@ -42,13 +45,57 @@ export function FoodLogCard({ log, index = 0, onDelete }: FoodLogCardProps) {
     );
   };
 
+  const handlePhotoPress = () => {
+    if (!log.photo_url) {
+      router.push({ pathname: '/edit-entry/[id]', params: { id: log.id } });
+      return;
+    }
+    Alert.alert(
+      log.meal_name,
+      undefined,
+      [
+        { text: 'View Full Screen', onPress: () => setShowPhotoModal(true) },
+        { text: 'Replace Photo', onPress: () => router.push({ pathname: '/edit-entry/[id]', params: { id: log.id } }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
   return (
     <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
-      <View style={styles.card}>
-        <TouchableOpacity
-          onPress={() => router.push({ pathname: '/edit-entry/[id]', params: { id: log.id } })}
-          style={styles.photoContainer}
+      {log.photo_url && (
+        <Modal
+          visible={showPhotoModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowPhotoModal(false)}
+          statusBarTranslucent
         >
+          <View style={styles.photoModalOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              onPress={() => setShowPhotoModal(false)}
+              activeOpacity={1}
+            />
+            <Image
+              source={{ uri: log.photo_url }}
+              style={styles.fullScreenPhoto}
+              resizeMode="contain"
+            />
+            <TouchableOpacity
+              style={styles.closePhotoBtn}
+              onPress={() => setShowPhotoModal(false)}
+            >
+              <View style={styles.closePhotoBtnInner}>
+                <Text style={styles.closePhotoBtnText}>✕</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
+
+      <View style={styles.card}>
+        <TouchableOpacity onPress={handlePhotoPress} style={styles.photoContainer} testID="photo-container">
           {log.photo_url ? (
             <Image source={{ uri: log.photo_url }} style={styles.photo} />
           ) : (
@@ -69,10 +116,11 @@ export function FoodLogCard({ log, index = 0, onDelete }: FoodLogCardProps) {
                   router.push({ pathname: '/edit-entry/[id]', params: { id: log.id } })
                 }
                 style={styles.actionBtn}
+                testID="edit-btn"
               >
                 <Ionicons name="pencil-outline" size={18} color={Colors.secondary} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDelete} style={styles.actionBtn}>
+              <TouchableOpacity onPress={handleDelete} style={styles.actionBtn} testID="delete-btn">
                 <Ionicons name="trash-outline" size={18} color={Colors.error} />
               </TouchableOpacity>
             </View>
@@ -199,5 +247,35 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullScreenPhoto: {
+    width: '100%',
+    height: '80%',
+  },
+  closePhotoBtn: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+  },
+  closePhotoBtnInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  closePhotoBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Nunito_700Bold',
   },
 });

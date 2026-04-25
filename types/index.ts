@@ -16,6 +16,7 @@ export interface UserProfile {
   fat_target_pct: number;
   notification_enabled: boolean;
   notification_time: string;
+  avatar_url?: string;
   created_at: string;
 }
 

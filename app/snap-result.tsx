@@ -36,8 +36,16 @@ const MACROS: { key: keyof MealAnalysis; label: string; unit: string; emoji: str
   { key: 'saturated_fat_g', label: 'Saturated Fat', unit: 'g', emoji: '🧈', color: '#CD853F' },
 ];
 
+const LOADING_STEPS = [
+  'Identifying ingredients...',
+  'Estimating portion sizes...',
+  'Calculating nutrition...',
+  'Almost done...',
+];
+
 function LoadingView() {
   const pulse = useSharedValue(0.6);
+  const [stepIndex, setStepIndex] = useState(0);
 
   useEffect(() => {
     pulse.value = withRepeat(
@@ -45,13 +53,17 @@ function LoadingView() {
       -1,
       false
     );
+    const interval = setInterval(() => {
+      setStepIndex((i) => Math.min(i + 1, LOADING_STEPS.length - 1));
+    }, 2500);
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <View style={styles.loadingContainer}>
       <Text style={styles.loadingEmoji}>🍽️</Text>
       <Text style={styles.loadingTitle}>Analyzing your meal...</Text>
-      <Text style={styles.loadingSubtitle}>CaloriePal is figuring out the nutrition info</Text>
+      <Text style={styles.loadingSubtitle}>{LOADING_STEPS[stepIndex]}</Text>
       <View style={styles.loadingDots}>
         {[0, 1, 2].map((i) => (
           <Animated.View
@@ -59,6 +71,16 @@ function LoadingView() {
             style={[styles.dot, { backgroundColor: Colors.primary }]}
             entering={FadeIn.delay(i * 200)}
           />
+        ))}
+      </View>
+      <View style={styles.loadingSteps}>
+        {LOADING_STEPS.slice(0, -1).map((step, i) => (
+          <View key={step} style={styles.loadingStep}>
+            <View style={[styles.loadingStepDot, i <= stepIndex && styles.loadingStepDotDone]} />
+            <Text style={[styles.loadingStepText, i <= stepIndex && styles.loadingStepTextDone]}>
+              {step}
+            </Text>
+          </View>
         ))}
       </View>
     </View>
@@ -413,6 +435,23 @@ const styles = StyleSheet.create({
   },
   loadingDots: { flexDirection: 'row', gap: 8, marginTop: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  loadingSteps: { marginTop: 28, gap: 12, width: '100%', paddingHorizontal: 8 },
+  loadingStep: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  loadingStepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.border,
+    borderWidth: 1.5,
+    borderColor: Colors.borderLight,
+  },
+  loadingStepDotDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  loadingStepText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  loadingStepTextDone: { color: Colors.text, fontFamily: 'Nunito_700Bold' },
   container: { padding: 16, paddingBottom: 40 },
   topRow: {
     flexDirection: 'row',

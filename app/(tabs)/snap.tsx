@@ -51,7 +51,7 @@ export default function SnapScreen() {
       }
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.8,
+        quality: 0.5,
         exif: false,
       });
 
@@ -75,7 +75,7 @@ export default function SnapScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
+        quality: 0.5,
         base64: true,
         allowsEditing: true,
         aspect: [4, 3],

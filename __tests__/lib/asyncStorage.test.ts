@@ -16,6 +16,8 @@ import {
   generateId,
   getWaterCups,
   setWaterCups,
+  getWaterGoal,
+  saveWaterGoal,
   getMood,
   setMood,
   Mood,
@@ -255,6 +257,47 @@ describe('Water intake tracking', () => {
   it('stores the exact integer value provided', async () => {
     await setWaterCups(TODAY, 12);
     expect(await getWaterCups(TODAY)).toBe(12);
+  });
+});
+
+describe('Water goal (global setting)', () => {
+  it('returns 8 as the default water goal when not set', async () => {
+    expect(await getWaterGoal()).toBe(8);
+  });
+
+  it('saves and retrieves a custom water goal', async () => {
+    await saveWaterGoal(10);
+    expect(await getWaterGoal()).toBe(10);
+  });
+
+  it('overwrites a previously saved goal', async () => {
+    await saveWaterGoal(6);
+    await saveWaterGoal(12);
+    expect(await getWaterGoal()).toBe(12);
+  });
+
+  it('clamps values below 1 up to 1', async () => {
+    await saveWaterGoal(0);
+    expect(await getWaterGoal()).toBe(1);
+  });
+
+  it('clamps values above 20 down to 20', async () => {
+    await saveWaterGoal(25);
+    expect(await getWaterGoal()).toBe(20);
+  });
+
+  it('accepts the boundary values 1 and 20', async () => {
+    await saveWaterGoal(1);
+    expect(await getWaterGoal()).toBe(1);
+    await saveWaterGoal(20);
+    expect(await getWaterGoal()).toBe(20);
+  });
+
+  it('is independent of the daily cup count', async () => {
+    await saveWaterGoal(10);
+    await setWaterCups('2026-04-25', 5);
+    expect(await getWaterGoal()).toBe(10);
+    expect(await getWaterCups('2026-04-25')).toBe(5);
   });
 });
 
