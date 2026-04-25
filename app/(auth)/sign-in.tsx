@@ -38,7 +38,10 @@ export default function SignInScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await signIn(email.trim(), password);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
+      );
+      await Promise.race([signIn(email.trim(), password), timeout]);
       router.replace('/(tabs)/');
     } catch (e: any) {
       Alert.alert('Sign In Failed', e.message || 'Please check your credentials and try again.');

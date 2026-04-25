@@ -7,10 +7,13 @@ const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
   very_active: 1.725,
 };
 
-const GOAL_ADJUSTMENTS: Record<Goal, number> = {
-  lose_weight: -500,
-  maintain: 0,
-  gain_muscle: 300,
+// Cal deficit per lb of fat per week (1 lb fat ≈ 3,500 kcal → 500 cal/day deficit)
+export type WeightLossRate = 1 | 1.5 | 2;
+
+export const WEIGHT_LOSS_DEFICITS: Record<WeightLossRate, number> = {
+  1: 500,    // −500 cal/day → ~1 lb/week
+  1.5: 750,  // −750 cal/day → ~1.5 lb/week
+  2: 1000,   // −1000 cal/day → ~2 lb/week
 };
 
 export function calculateTDEE(
@@ -33,12 +36,20 @@ export function calculateDailyCalorieTarget(
   heightCm: number,
   age: number,
   activityLevel: ActivityLevel,
-  goal: Goal
+  goal: Goal,
+  weightLossRate: WeightLossRate = 1
 ): number {
   // Use female formula by default (most conservative)
   const tdee = calculateTDEE(weightKg, heightCm, age, false, activityLevel);
-  const adjusted = tdee + GOAL_ADJUSTMENTS[goal];
-  return Math.max(1200, Math.min(4000, adjusted));
+  let adjustment: number;
+  if (goal === 'lose_weight') {
+    adjustment = -WEIGHT_LOSS_DEFICITS[weightLossRate];
+  } else if (goal === 'gain_muscle') {
+    adjustment = 300;
+  } else {
+    adjustment = 0;
+  }
+  return Math.max(1200, Math.min(4000, tdee + adjustment));
 }
 
 export function calculateMacroGrams(

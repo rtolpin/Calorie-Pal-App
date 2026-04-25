@@ -29,14 +29,11 @@ export const useFoodLogStore = create<FoodLogState>((set, get) => ({
     try {
       if (isGuest) {
         const logs = await LocalStorage.getGuestLogs();
-        set({ logs, isLoading: false });
+        set({ logs });
         return;
       }
 
-      if (!userId) {
-        set({ isLoading: false });
-        return;
-      }
+      if (!userId) return;
 
       const { data, error } = await supabase
         .from('food_logs')
@@ -45,8 +42,10 @@ export const useFoodLogStore = create<FoodLogState>((set, get) => ({
         .order('logged_at', { ascending: false });
 
       if (error) throw error;
-      set({ logs: (data as FoodLog[]) || [], isLoading: false });
+      set({ logs: (data as FoodLog[]) || [] });
     } catch {
+      // silent — keep existing logs on screen
+    } finally {
       set({ isLoading: false });
     }
   },

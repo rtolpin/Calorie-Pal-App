@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Linking,
   ScrollView,
   Share,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -18,6 +20,7 @@ import { useFoodLogStore } from '../../store/foodLogStore';
 import { GuestBanner } from '../../components/GuestBanner';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { calculateDailyCalorieTarget, WeightLossRate, WEIGHT_LOSS_DEFICITS } from '../../lib/tdee';
 import {
   requestNotificationPermissions,
   scheduleDailyReminder,
@@ -26,21 +29,65 @@ import {
 import { Colors } from '../../constants/Colors';
 import { Goal, ActivityLevel } from '../../types';
 
-const GOAL_LABELS: Record<Goal, string> = {
-  lose_weight: '🔥 Lose Weight',
-  maintain: '⚖️ Maintain',
-  gain_muscle: '💪 Gain Muscle',
+const GOALS: { value: Goal; label: string; emoji: string; desc: string }[] = [
+  { value: 'lose_weight', label: 'Lose Weight', emoji: '🔥', desc: 'Calorie deficit to burn fat' },
+  { value: 'maintain', label: 'Maintain', emoji: '⚖️', desc: 'Balance intake & expenditure' },
+  { value: 'gain_muscle', label: 'Gain Muscle', emoji: '💪', desc: 'Surplus to support growth' },
+];
+
+const ACTIVITY_LEVELS: { value: ActivityLevel; label: string; desc: string }[] = [
+  { value: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
+  { value: 'lightly_active', label: 'Lightly Active', desc: '1–3 days/week' },
+  { value: 'active', label: 'Active', desc: '3–5 days/week' },
+  { value: 'very_active', label: 'Very Active', desc: '6–7 days/week' },
+];
+
+const GOAL_CONTEXT: Record<Goal, { headline: string; detail: string; tips: string[] }> = {
+  lose_weight: {
+    headline: '~0.5 kg (1 lb) fat loss per week',
+    detail:
+      'A 500 cal/day deficit creates a weekly shortfall of ~3,500 calories, which corresponds to roughly 0.5 kg (1 lb) of fat. Losing weight slower than this is also healthy and sustainable.',
+    tips: [
+      'Aim for ≥ 1.6 g protein per kg of body weight to preserve muscle',
+      'Prioritise whole foods and fibre to stay full on fewer calories',
+      'Pair your deficit with strength training to maintain muscle mass',
+      'Avoid dropping below 1,200 cal/day without medical supervision',
+    ],
+  },
+  maintain: {
+    headline: 'Balance calories in and out',
+    detail:
+      'Maintenance calories equal your Total Daily Energy Expenditure (TDEE). Eating at this level keeps your weight stable over time.',
+    tips: [
+      'Focus on nutrient density — vitamins, minerals, and fibre matter as much as calories',
+      'Track protein to support muscle health and satiety',
+      'Allow ±10% daily variation — it all averages out over the week',
+      'Regular exercise helps keep your metabolism active',
+    ],
+  },
+  gain_muscle: {
+    headline: '~0.25–0.5 kg (0.5–1 lb) muscle per month',
+    detail:
+      'A modest 300 cal/day surplus provides energy for muscle synthesis without excessive fat gain. Natural muscle growth is slow — patience and consistent training matter most.',
+    tips: [
+      'Aim for 1.8–2.2 g protein per kg of body weight daily',
+      'Focus on progressive overload in resistance training',
+      'Prioritise sleep — most muscle repair happens at night',
+      'Track strength gains, not just the scale',
+    ],
+  },
 };
 
-const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
-  sedentary: 'Sedentary',
-  lightly_active: 'Lightly Active',
-  active: 'Active',
-  very_active: 'Very Active',
-};
-
-function MacroSlider({ label, value, color, onChange }: {
-  label: string; value: number; color: string; onChange: (v: number) => void;
+function MacroSlider({
+  label,
+  value,
+  color,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  onChange: (v: number) => void;
 }) {
   return (
     <View style={styles.sliderRow}>
@@ -63,8 +110,24 @@ export default function ProfileScreen() {
   const { session, profile, isGuest, updateProfile, signOut } = useAuthStore();
   const { logs, clearLogs } = useFoodLogStore();
 
+  // ── Unit preferences ──────────────────────────────────────────────────────
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('lbs');
   const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('ft');
+
+  // ── Editable profile fields ───────────────────────────────────────────────
+  const [selectedGoal, setSelectedGoal] = useState<Goal>(profile?.goal || 'maintain');
+  const [weightLossRate, setWeightLossRate] = useState<WeightLossRate>(1);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityLevel>(
+    profile?.activity_level || 'lightly_active'
+  );
+  const [weightInput, setWeightInput] = useState('');
+  const [heightFt, setHeightFt] = useState('');
+  const [heightIn, setHeightIn] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [ageInput, setAgeInput] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // ── Daily targets ─────────────────────────────────────────────────────────
   const [calorieGoal, setCalorieGoal] = useState(String(profile?.daily_calorie_target || 2000));
   const [proteinPct, setProteinPct] = useState(profile?.protein_target_pct || 30);
   const [carbsPct, setCarbsPct] = useState(profile?.carbs_target_pct || 40);
@@ -76,16 +139,96 @@ export default function ProfileScreen() {
   const macroTotal = proteinPct + carbsPct + fatPct;
   const macroValid = macroTotal === 100;
 
+  // Populate fields from profile on load
   useEffect(() => {
-    if (profile) {
-      setCalorieGoal(String(profile.daily_calorie_target));
-      setProteinPct(profile.protein_target_pct);
-      setCarbsPct(profile.carbs_target_pct);
-      setFatPct(profile.fat_target_pct);
-      setNotificationsOn(profile.notification_enabled);
-      setNotifTime(profile.notification_time);
+    if (!profile) return;
+    setSelectedGoal(profile.goal || 'maintain');
+    setSelectedActivity(profile.activity_level || 'lightly_active');
+    setCalorieGoal(String(profile.daily_calorie_target));
+    setProteinPct(profile.protein_target_pct);
+    setCarbsPct(profile.carbs_target_pct);
+    setFatPct(profile.fat_target_pct);
+    setNotificationsOn(profile.notification_enabled);
+    setNotifTime(profile.notification_time);
+
+    if (profile.weight_kg) {
+      setWeightInput(
+        weightUnit === 'lbs'
+          ? String(Math.round(profile.weight_kg * 2.20462))
+          : String(profile.weight_kg)
+      );
     }
+    if (profile.height_cm) {
+      const totalIn = profile.height_cm / 2.54;
+      setHeightFt(String(Math.floor(totalIn / 12)));
+      setHeightIn(String(Math.round(totalIn % 12)));
+      setHeightCm(String(Math.round(profile.height_cm)));
+    }
+    if (profile.age) setAgeInput(String(profile.age));
   }, [profile]);
+
+  // Reformat weight when unit changes
+  useEffect(() => {
+    if (!profile?.weight_kg) return;
+    setWeightInput(
+      weightUnit === 'lbs'
+        ? String(Math.round(profile.weight_kg * 2.20462))
+        : String(profile.weight_kg)
+    );
+  }, [weightUnit]);
+
+  // ── Live TDEE recalculation ───────────────────────────────────────────────
+  const recommendedCalories = useMemo(() => {
+    const weightKg =
+      weightUnit === 'lbs'
+        ? (parseFloat(weightInput) || 0) * 0.453592
+        : parseFloat(weightInput) || 0;
+    const heightCmVal =
+      heightUnit === 'ft'
+        ? (parseFloat(heightFt) || 0) * 30.48 + (parseFloat(heightIn) || 0) * 2.54
+        : parseFloat(heightCm) || 0;
+    const age = parseInt(ageInput) || 0;
+    if (!weightKg || !heightCmVal || !age) return null;
+    return calculateDailyCalorieTarget(weightKg, heightCmVal, age, selectedActivity, selectedGoal, weightLossRate);
+  }, [weightInput, heightFt, heightIn, heightCm, ageInput, selectedActivity, selectedGoal, weightLossRate, weightUnit, heightUnit]);
+
+  // ── Save handlers ─────────────────────────────────────────────────────────
+  const handleSaveProfile = async () => {
+    if (isGuest) return;
+    setProfileSaving(true);
+    try {
+      const weightKg =
+        weightUnit === 'lbs'
+          ? (parseFloat(weightInput) || 0) * 0.453592
+          : parseFloat(weightInput) || 0;
+      const heightCmVal =
+        heightUnit === 'ft'
+          ? (parseFloat(heightFt) || 0) * 30.48 + (parseFloat(heightIn) || 0) * 2.54
+          : parseFloat(heightCm) || 0;
+
+      await updateProfile({
+        goal: selectedGoal,
+        activity_level: selectedActivity,
+        weight_kg: weightKg || undefined,
+        height_cm: heightCmVal || undefined,
+        age: parseInt(ageInput) || undefined,
+      });
+      Alert.alert('Saved! ✅', 'Your profile has been updated.');
+    } catch {
+      Alert.alert('Error', 'Failed to save profile. Please try again.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleApplyRecommended = () => {
+    if (!recommendedCalories) return;
+    setCalorieGoal(String(recommendedCalories));
+    Alert.alert(
+      'Calorie Target Updated',
+      `Your daily target has been set to ${recommendedCalories} cal based on your profile. Tap "Save Targets" to apply.`
+    );
+  };
 
   const handleSaveTargets = async () => {
     if (!macroValid) {
@@ -102,9 +245,9 @@ export default function ProfileScreen() {
         notification_enabled: notificationsOn,
         notification_time: notifTime,
       });
-      Alert.alert('Saved! ✅', 'Your settings have been updated.');
+      Alert.alert('Saved! ✅', 'Your targets have been updated.');
     } catch {
-      Alert.alert('Error', 'Failed to save settings. Please try again.');
+      Alert.alert('Error', 'Failed to save targets. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -145,7 +288,6 @@ export default function ProfileScreen() {
         ].join(',')
       )
       .join('\n');
-
     await Share.share({ message: header + rows, title: 'CaloriePal Food Journal' });
   };
 
@@ -173,15 +315,29 @@ export default function ProfileScreen() {
         {
           text: 'Delete Account',
           style: 'destructive',
-          onPress: () => Alert.alert('Contact Support', 'Please email support@caloriepal.app to delete your account.'),
+          onPress: () =>
+            Alert.alert('Contact Support', 'Please email support@caloriepal.app to delete your account.'),
         },
       ]
     );
   };
 
   const initials = profile?.name
-    ? profile.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : isGuest ? 'G' : '?';
+    ? profile.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : isGuest
+    ? 'G'
+    : '?';
+
+  const goalCtx = GOAL_CONTEXT[selectedGoal];
+  const currentCalories = parseInt(calorieGoal) || 2000;
+  const proteinGrams = Math.round((currentCalories * (proteinPct / 100)) / 4);
+  const carbsGrams = Math.round((currentCalories * (carbsPct / 100)) / 4);
+  const fatGrams = Math.round((currentCalories * (fatPct / 100)) / 9);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -189,101 +345,268 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>👤 Profile</Text>
 
+        {/* ── Avatar card ─────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.profileCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <View>
             <Text style={styles.profileName}>
-              {isGuest ? 'Guest User' : (profile?.name || 'User')}
+              {isGuest ? 'Guest User' : profile?.name || 'User'}
             </Text>
             <Text style={styles.profileEmail}>
-              {isGuest ? 'Not signed in' : (session?.user.email || '')}
+              {isGuest ? 'Not signed in' : session?.user.email || ''}
             </Text>
           </View>
         </Animated.View>
 
-        {!isGuest && profile && (
-          <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.statsCard}>
-            <Text style={styles.sectionTitle}>My Stats</Text>
-            <View style={styles.statsGrid}>
-              {[
-                { label: 'Goal', value: GOAL_LABELS[profile.goal || 'maintain'] },
-                { label: 'Activity', value: ACTIVITY_LABELS[profile.activity_level || 'lightly_active'] },
-                {
-                  label: 'Weight',
-                  value: profile.weight_kg
-                    ? weightUnit === 'lbs'
-                      ? `${Math.round(profile.weight_kg * 2.20462)} lbs`
-                      : `${profile.weight_kg} kg`
-                    : '—',
-                },
-                {
-                  label: 'Height',
-                  value: profile.height_cm
-                    ? heightUnit === 'ft'
-                      ? (() => {
-                          const totalIn = profile.height_cm / 2.54;
-                          const ft = Math.floor(totalIn / 12);
-                          const inches = Math.round(totalIn % 12);
-                          return `${ft} ft ${inches} in`;
-                        })()
-                      : `${profile.height_cm} cm`
-                    : '—',
-                },
-                { label: 'Age', value: profile.age ? `${profile.age} yrs` : '—' },
-              ].map((stat) => (
-                <View key={stat.label} style={styles.statItem}>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                </View>
+        {/* ── Editable goals & stats ──────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.card}>
+          <Text style={styles.sectionTitle}>🎯 My Fitness Goal</Text>
+          <View style={styles.goalGrid}>
+            {GOALS.map((g) => (
+              <TouchableOpacity
+                key={g.value}
+                style={[styles.goalBtn, selectedGoal === g.value && styles.goalBtnActive]}
+                onPress={() => setSelectedGoal(g.value)}
+                disabled={isGuest}
+              >
+                <Text style={styles.goalEmoji}>{g.emoji}</Text>
+                <Text style={[styles.goalLabel, selectedGoal === g.value && styles.goalLabelActive]}>
+                  {g.label}
+                </Text>
+                <Text style={styles.goalDesc}>{g.desc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {selectedGoal === 'lose_weight' && (
+            <View style={styles.lossRateSection}>
+              <Text style={styles.lossRateTitle}>📉 Weight Loss Rate</Text>
+              <Text style={styles.lossRateSubtitle}>
+                Choose how aggressively you want to lose weight. Slower is more sustainable and preserves more muscle.
+              </Text>
+              <View style={styles.lossRateGrid}>
+                {([
+                  { rate: 1 as WeightLossRate, label: '1 lb / week', deficit: '−500 cal/day', tag: 'Recommended', tagColor: Colors.success },
+                  { rate: 1.5 as WeightLossRate, label: '1.5 lb / week', deficit: '−750 cal/day', tag: 'Moderate', tagColor: Colors.warning },
+                  { rate: 2 as WeightLossRate, label: '2 lb / week', deficit: '−1,000 cal/day', tag: 'Aggressive', tagColor: Colors.error },
+                ]).map(({ rate, label, deficit, tag, tagColor }) => (
+                  <TouchableOpacity
+                    key={rate}
+                    style={[styles.lossRateBtn, weightLossRate === rate && styles.lossRateBtnActive]}
+                    onPress={() => setWeightLossRate(rate)}
+                    disabled={isGuest}
+                  >
+                    <View style={[styles.lossRateTag, { backgroundColor: tagColor + '22', borderColor: tagColor }]}>
+                      <Text style={[styles.lossRateTagText, { color: tagColor }]}>{tag}</Text>
+                    </View>
+                    <Text style={[styles.lossRateLabel, weightLossRate === rate && styles.lossRateLabelActive]}>
+                      {label}
+                    </Text>
+                    <Text style={styles.lossRateDeficit}>{deficit}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.lossRateWarning}>
+                <Text style={styles.lossRateWarningText}>
+                  ⚠️ Losing more than 1–1.5 lb/week increases risk of muscle loss, nutritional deficiencies, and metabolic slowdown. A deficit below 1,200 cal/day is not recommended without medical supervision.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🏃 Activity Level</Text>
+          <View style={styles.activityGrid}>
+            {ACTIVITY_LEVELS.map((a) => (
+              <TouchableOpacity
+                key={a.value}
+                style={[styles.activityBtn, selectedActivity === a.value && styles.activityBtnActive]}
+                onPress={() => setSelectedActivity(a.value)}
+                disabled={isGuest}
+              >
+                <Text
+                  style={[
+                    styles.activityLabel,
+                    selectedActivity === a.value && styles.activityLabelActive,
+                  ]}
+                >
+                  {a.label}
+                </Text>
+                <Text style={styles.activityDesc}>{a.desc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>📏 Physical Stats</Text>
+          <Text style={styles.statsHint}>
+            Used to calculate your personalised calorie target via the Mifflin-St Jeor equation.
+          </Text>
+
+          {/* Weight */}
+          <View style={styles.statRow}>
+            <Text style={styles.statRowLabel}>Weight</Text>
+            <View style={styles.statRowInput}>
+              <TextInput
+                style={styles.statInput}
+                value={weightInput}
+                onChangeText={setWeightInput}
+                keyboardType="numeric"
+                placeholder={weightUnit === 'lbs' ? '154' : '70'}
+                placeholderTextColor={Colors.textMuted}
+                editable={!isGuest}
+              />
+              <Text style={styles.statUnit}>{weightUnit}</Text>
+            </View>
+            <View style={styles.unitToggle}>
+              {(['lbs', 'kg'] as const).map((u) => (
+                <TouchableOpacity
+                  key={u}
+                  style={[styles.unitBtn, weightUnit === u && styles.unitBtnActive]}
+                  onPress={() => setWeightUnit(u)}
+                >
+                  <Text style={[styles.unitBtnText, weightUnit === u && styles.unitBtnTextActive]}>
+                    {u}
+                  </Text>
+                </TouchableOpacity>
               ))}
             </View>
-            {(profile.weight_kg || profile.height_cm) ? (
-              <View style={styles.unitTogglesRow}>
-                {profile.weight_kg ? (
-                  <View style={styles.weightUnitRow}>
-                    <Text style={styles.weightUnitLabel}>Weight:</Text>
-                    <View style={styles.unitToggle}>
-                      {(['lbs', 'kg'] as const).map((u) => (
-                        <TouchableOpacity
-                          key={u}
-                          style={[styles.unitBtn, weightUnit === u && styles.unitBtnActive]}
-                          onPress={() => setWeightUnit(u)}
-                        >
-                          <Text style={[styles.unitBtnText, weightUnit === u && styles.unitBtnTextActive]}>
-                            {u}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-                {profile.height_cm ? (
-                  <View style={styles.weightUnitRow}>
-                    <Text style={styles.weightUnitLabel}>Height:</Text>
-                    <View style={styles.unitToggle}>
-                      {(['ft', 'cm'] as const).map((u) => (
-                        <TouchableOpacity
-                          key={u}
-                          style={[styles.unitBtn, heightUnit === u && styles.unitBtnActive]}
-                          onPress={() => setHeightUnit(u)}
-                        >
-                          <Text style={[styles.unitBtnText, heightUnit === u && styles.unitBtnTextActive]}>
-                            {u}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </Animated.View>
-        )}
+          </View>
 
-        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.card}>
-          <Text style={styles.sectionTitle}>Daily Targets</Text>
+          {/* Height */}
+          <View style={styles.statRow}>
+            <Text style={styles.statRowLabel}>Height</Text>
+            {heightUnit === 'ft' ? (
+              <View style={styles.statRowInput}>
+                <TextInput
+                  style={[styles.statInput, { width: 52 }]}
+                  value={heightFt}
+                  onChangeText={setHeightFt}
+                  keyboardType="numeric"
+                  placeholder="5"
+                  placeholderTextColor={Colors.textMuted}
+                  editable={!isGuest}
+                />
+                <Text style={styles.statUnit}>ft</Text>
+                <TextInput
+                  style={[styles.statInput, { width: 52, marginLeft: 6 }]}
+                  value={heightIn}
+                  onChangeText={setHeightIn}
+                  keyboardType="numeric"
+                  placeholder="8"
+                  placeholderTextColor={Colors.textMuted}
+                  editable={!isGuest}
+                />
+                <Text style={styles.statUnit}>in</Text>
+              </View>
+            ) : (
+              <View style={styles.statRowInput}>
+                <TextInput
+                  style={styles.statInput}
+                  value={heightCm}
+                  onChangeText={setHeightCm}
+                  keyboardType="numeric"
+                  placeholder="172"
+                  placeholderTextColor={Colors.textMuted}
+                  editable={!isGuest}
+                />
+                <Text style={styles.statUnit}>cm</Text>
+              </View>
+            )}
+            <View style={styles.unitToggle}>
+              {(['ft', 'cm'] as const).map((u) => (
+                <TouchableOpacity
+                  key={u}
+                  style={[styles.unitBtn, heightUnit === u && styles.unitBtnActive]}
+                  onPress={() => setHeightUnit(u)}
+                >
+                  <Text style={[styles.unitBtnText, heightUnit === u && styles.unitBtnTextActive]}>
+                    {u}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Age */}
+          <View style={styles.statRow}>
+            <Text style={styles.statRowLabel}>Age</Text>
+            <View style={styles.statRowInput}>
+              <TextInput
+                style={styles.statInput}
+                value={ageInput}
+                onChangeText={setAgeInput}
+                keyboardType="numeric"
+                placeholder="30"
+                placeholderTextColor={Colors.textMuted}
+                editable={!isGuest}
+              />
+              <Text style={styles.statUnit}>yrs</Text>
+            </View>
+          </View>
+
+          {/* Live TDEE result */}
+          {recommendedCalories && (
+            <View style={styles.tdeeBox}>
+              <View style={styles.tdeeRow}>
+                <View>
+                  <Text style={styles.tdeeLabel}>Recommended daily target</Text>
+                  <Text style={styles.tdeeCalories}>{recommendedCalories} cal / day</Text>
+                  <Text style={styles.tdeeGoal}>
+                    {GOALS.find((g) => g.value === selectedGoal)?.emoji}{' '}
+                    {GOALS.find((g) => g.value === selectedGoal)?.label}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.applyBtn} onPress={handleApplyRecommended}>
+                  <Text style={styles.applyBtnText}>Apply ↓</Text>
+                </TouchableOpacity>
+              </View>
+              {selectedGoal === 'lose_weight' && (
+                <Text style={styles.tdeeDeficitNote}>
+                  Includes a {WEIGHT_LOSS_DEFICITS[weightLossRate]} cal/day deficit targeting ~{weightLossRate} lb/week of fat loss.
+                </Text>
+              )}
+              <Text style={styles.tdeeDisclaimer}>
+                Calculated using the Mifflin-St Jeor equation. This is an estimate — individual metabolism varies.
+              </Text>
+            </View>
+          )}
+
+          {!isGuest && (
+            <Button
+              title="💾 Save Profile"
+              gradient
+              loading={profileSaving}
+              onPress={handleSaveProfile}
+              style={styles.saveBtn}
+            />
+          )}
+        </Animated.View>
+
+        {/* ── Goal context card ───────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.goalContextCard}>
+          <Text style={styles.goalContextTitle}>
+            {GOALS.find((g) => g.value === selectedGoal)?.emoji} What this goal means for you
+          </Text>
+          <View style={styles.goalHeadlinePill}>
+            <Text style={styles.goalHeadlineText}>{goalCtx.headline}</Text>
+          </View>
+          <Text style={styles.goalDetail}>{goalCtx.detail}</Text>
+          <Text style={styles.goalTipsTitle}>Action steps:</Text>
+          {goalCtx.tips.map((tip, i) => (
+            <View key={i} style={styles.tipRow}>
+              <Text style={styles.tipBullet}>•</Text>
+              <Text style={styles.tipText}>{tip}</Text>
+            </View>
+          ))}
+          <Text style={styles.goalContextDisclaimer}>
+            These guidelines are for general informational purposes only and are not medical advice. Consult a registered dietitian or physician before making significant changes to your diet or exercise routine.
+          </Text>
+        </Animated.View>
+
+        {/* ── Daily targets (calories + macros) ──────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.card}>
+          <Text style={styles.sectionTitle}>🎯 Daily Targets</Text>
 
           <Input
             label="Daily Calorie Goal"
@@ -293,10 +616,24 @@ export default function ProfileScreen() {
             leftIcon="flame-outline"
           />
 
+          {/* Macro grams preview */}
+          <View style={styles.macroPreviewRow}>
+            {[
+              { label: 'Protein', grams: proteinGrams, color: Colors.protein },
+              { label: 'Carbs', grams: carbsGrams, color: Colors.carbs },
+              { label: 'Fat', grams: fatGrams, color: Colors.fat },
+            ].map(({ label, grams, color }) => (
+              <View key={label} style={[styles.macroPreviewItem, { borderColor: color + '55' }]}>
+                <Text style={[styles.macroPreviewGrams, { color }]}>{grams}g</Text>
+                <Text style={styles.macroPreviewLabel}>{label}</Text>
+              </View>
+            ))}
+          </View>
+
           <Text style={styles.macroLabel}>
             Macro Split{' '}
             <Text style={[styles.macroTotal, !macroValid && styles.macroError]}>
-              ({macroTotal}% total — must equal 100%)
+              ({macroTotal}% — must equal 100%)
             </Text>
           </Text>
 
@@ -304,9 +641,15 @@ export default function ProfileScreen() {
           <MacroSlider label="Carbs 🌾" value={carbsPct} color={Colors.carbs} onChange={setCarbsPct} />
           <MacroSlider label="Fat 🥑" value={fatPct} color={Colors.fat} onChange={setFatPct} />
 
+          <View style={styles.macroDisclaimerBox}>
+            <Text style={styles.macroDisclaimerText}>
+              ℹ️ Suggested starting point: 30% Protein · 40% Carbs · 30% Fat. Adjust based on your preferences, performance, and how you feel. These targets are estimates — a registered dietitian can provide personalised macro guidance.
+            </Text>
+          </View>
+
           {!isGuest && (
             <Button
-              title="💾 Save Changes"
+              title="💾 Save Targets"
               gradient
               loading={saving}
               onPress={handleSaveTargets}
@@ -316,7 +659,30 @@ export default function ProfileScreen() {
           )}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.card}>
+        {/* ── TDEE / formula disclaimer ───────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.disclaimerCard}>
+          <Text style={styles.disclaimerTitle}>⚕️ How Calorie Targets are Calculated</Text>
+          <Text style={styles.disclaimerBody}>
+            CaloriePal uses the <Text style={styles.disclaimerBold}>Mifflin-St Jeor equation</Text> to estimate your Basal Metabolic Rate (BMR) — the calories your body needs at rest. This is then multiplied by your activity level to get your Total Daily Energy Expenditure (TDEE), and adjusted for your goal (−500 cal for weight loss, +300 cal for muscle gain).
+          </Text>
+          <Text style={styles.disclaimerBody}>
+            These are <Text style={styles.disclaimerBold}>population-average estimates</Text>. Your actual needs may differ based on genetics, hormones, medications, and other individual factors. All health and nutrition information in this app is for general informational purposes only and is <Text style={styles.disclaimerBold}>not a substitute for professional medical advice</Text>.
+          </Text>
+          <Text style={styles.disclaimerSourcesTitle}>Authoritative sources:</Text>
+          {[
+            { label: 'NIH — Understanding Calories', url: 'https://www.nhlbi.nih.gov/health/educational/lose_wt/calories.htm' },
+            { label: 'USDA Dietary Guidelines', url: 'https://www.dietaryguidelines.gov' },
+            { label: 'Academy of Nutrition and Dietetics', url: 'https://www.eatright.org' },
+            { label: 'Mifflin et al. (1990) — Am J Clin Nutr', url: 'https://pubmed.ncbi.nlm.nih.gov/2305711/' },
+          ].map(({ label, url }) => (
+            <TouchableOpacity key={url} onPress={() => Linking.openURL(url)} style={styles.sourceRow}>
+              <Text style={styles.sourceLink}>↗ {label}</Text>
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+
+        {/* ── Notifications ───────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.card}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           <View style={styles.notifRow}>
             <View style={{ flex: 1 }}>
@@ -341,7 +707,8 @@ export default function ProfileScreen() {
           )}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.card}>
+        {/* ── Data & account ──────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.card}>
           <Text style={styles.sectionTitle}>Data & Account</Text>
 
           <TouchableOpacity style={styles.menuItem} onPress={handleExportCSV}>
@@ -367,10 +734,7 @@ export default function ProfileScreen() {
             />
           ) : (
             <>
-              <TouchableOpacity
-                style={[styles.menuItem, styles.signOutItem]}
-                onPress={handleSignOut}
-              >
+              <TouchableOpacity style={[styles.menuItem, styles.signOutItem]} onPress={handleSignOut}>
                 <Ionicons name="log-out-outline" size={20} color={Colors.error} />
                 <Text style={[styles.menuText, styles.signOutText]}>Sign Out</Text>
               </TouchableOpacity>
@@ -391,12 +755,9 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 16, paddingBottom: 100 },
-  title: {
-    fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 24,
-    color: Colors.text,
-    marginBottom: 16,
-  },
+  title: { fontFamily: 'Nunito_800ExtraBold', fontSize: 24, color: Colors.text, marginBottom: 16 },
+
+  // Profile header card
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,52 +777,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.5)',
   },
-  avatarText: {
-    fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 22,
-    color: Colors.textWhite,
-  },
-  profileName: {
-    fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 20,
-    color: Colors.textWhite,
-  },
-  profileEmail: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  statsCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statItem: {
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    padding: 12,
-    minWidth: '45%',
-    flex: 1,
-  },
-  statLabel: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 11,
-    color: Colors.textLight,
-    marginBottom: 4,
-  },
-  statValue: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 14,
-    color: Colors.text,
-  },
+  avatarText: { fontFamily: 'Nunito_800ExtraBold', fontSize: 22, color: Colors.textWhite },
+  profileName: { fontFamily: 'Nunito_800ExtraBold', fontSize: 20, color: Colors.textWhite },
+  profileEmail: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+
+  // Generic card
   card: {
     backgroundColor: Colors.surface,
     borderRadius: 20,
@@ -473,37 +793,187 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  sectionTitle: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 17,
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  macroLabel: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 12,
-  },
-  macroTotal: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 13,
-    color: Colors.textLight,
-  },
-  macroError: { color: Colors.error },
-  sliderRow: {
-    flexDirection: 'row',
+  sectionTitle: { fontFamily: 'Nunito_700Bold', fontSize: 17, color: Colors.text, marginBottom: 14 },
+  saveBtn: { marginTop: 8 },
+
+  // Goal selector
+  goalGrid: { flexDirection: 'row', gap: 8 },
+  goalBtn: {
+    flex: 1,
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
   },
-  sliderDot: { width: 12, height: 12, borderRadius: 6 },
-  sliderLabel: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 14,
-    color: Colors.text,
+  goalBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '12' },
+  goalEmoji: { fontSize: 22, marginBottom: 4 },
+  goalLabel: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.text, textAlign: 'center' },
+  goalLabelActive: { color: Colors.primary },
+  goalDesc: { fontFamily: 'Nunito_400Regular', fontSize: 10, color: Colors.textLight, textAlign: 'center', marginTop: 2 },
+
+  // Weight loss rate selector
+  lossRateSection: { marginTop: 16, marginBottom: 4 },
+  lossRateTitle: { fontFamily: 'Nunito_700Bold', fontSize: 15, color: Colors.text, marginBottom: 6 },
+  lossRateSubtitle: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, lineHeight: 17, marginBottom: 12 },
+  lossRateGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  lossRateBtn: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    gap: 6,
+  },
+  lossRateBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' },
+  lossRateTag: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  lossRateTagText: { fontFamily: 'Nunito_700Bold', fontSize: 10 },
+  lossRateLabel: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.text, textAlign: 'center' },
+  lossRateLabelActive: { color: Colors.primary },
+  lossRateDeficit: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, textAlign: 'center' },
+  lossRateWarning: {
+    backgroundColor: Colors.warning + '22',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  lossRateWarningText: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.text, lineHeight: 16 },
+  tdeeDeficitNote: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.primary, marginBottom: 4 },
+
+  // Activity selector
+  activityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  activityBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    minWidth: '47%',
     flex: 1,
   },
+  activityBtnActive: { borderColor: Colors.secondary, backgroundColor: Colors.secondary + '15' },
+  activityLabel: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text },
+  activityLabelActive: { color: Colors.secondary },
+  activityDesc: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, marginTop: 2 },
+
+  // Physical stats inputs
+  statsHint: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, marginBottom: 14, lineHeight: 18 },
+  statRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  statRowLabel: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.text, width: 52 },
+  statRowInput: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statInput: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    width: 80,
+    textAlign: 'center',
+  },
+  statUnit: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textLight },
+  unitToggle: { flexDirection: 'row', borderRadius: 8, borderWidth: 1.5, borderColor: Colors.border, overflow: 'hidden' },
+  unitBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: Colors.surface },
+  unitBtnActive: { backgroundColor: Colors.primary },
+  unitBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.textLight },
+  unitBtnTextActive: { color: Colors.textWhite },
+
+  // TDEE result box
+  tdeeBox: {
+    backgroundColor: '#EAF6FF',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 8,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary,
+  },
+  tdeeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  tdeeLabel: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, marginBottom: 2 },
+  tdeeCalories: { fontFamily: 'Nunito_800ExtraBold', fontSize: 22, color: Colors.text },
+  tdeeGoal: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, marginTop: 2 },
+  applyBtn: {
+    backgroundColor: Colors.secondary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  applyBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.textWhite },
+  tdeeDisclaimer: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, fontStyle: 'italic' },
+
+  // Goal context card
+  goalContextCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '40',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  goalContextTitle: { fontFamily: 'Nunito_700Bold', fontSize: 16, color: Colors.text, marginBottom: 12 },
+  goalHeadlinePill: {
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  goalHeadlineText: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.primary },
+  goalDetail: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.text, lineHeight: 20, marginBottom: 14 },
+  goalTipsTitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text, marginBottom: 8 },
+  tipRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  tipBullet: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.primary, lineHeight: 20 },
+  tipText: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.text, lineHeight: 20, flex: 1 },
+  goalContextDisclaimer: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    lineHeight: 16,
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 10,
+  },
+
+  // Macro preview
+  macroPreviewRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  macroPreviewItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    backgroundColor: Colors.background,
+  },
+  macroPreviewGrams: { fontFamily: 'Nunito_800ExtraBold', fontSize: 18 },
+  macroPreviewLabel: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, marginTop: 2 },
+
+  // Macro controls
+  macroLabel: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.text, marginBottom: 12 },
+  macroTotal: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textLight },
+  macroError: { color: Colors.error },
+  sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  sliderDot: { width: 12, height: 12, borderRadius: 6 },
+  sliderLabel: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.text, flex: 1 },
   sliderControls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sliderBtn: {
     width: 28,
@@ -513,28 +983,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sliderValue: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 15,
-    width: 40,
-    textAlign: 'center',
+  sliderValue: { fontFamily: 'Nunito_700Bold', fontSize: 15, width: 40, textAlign: 'center' },
+  macroDisclaimerBox: {
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  saveBtn: { marginTop: 4 },
-  notifRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+  macroDisclaimerText: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight, lineHeight: 18 },
+
+  // TDEE disclaimer card
+  disclaimerCard: {
+    backgroundColor: '#EAF6FF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary,
   },
-  notifLabel: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 15,
-    color: Colors.text,
-  },
-  notifSub: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
-    color: Colors.textLight,
-  },
+  disclaimerTitle: { fontFamily: 'Nunito_800ExtraBold', fontSize: 15, color: Colors.text, marginBottom: 12 },
+  disclaimerBody: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.text, lineHeight: 20, marginBottom: 10 },
+  disclaimerBold: { fontFamily: 'Nunito_700Bold' },
+  disclaimerSourcesTitle: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.text, marginTop: 4, marginBottom: 6 },
+  sourceRow: { paddingVertical: 4 },
+  sourceLink: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.secondary, textDecorationLine: 'underline' },
+
+  // Notifications
+  notifRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  notifLabel: { fontFamily: 'Nunito_700Bold', fontSize: 15, color: Colors.text },
+  notifSub: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+
+  // Menu items
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -543,58 +1024,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
-  menuText: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 15,
-    color: Colors.text,
-    flex: 1,
-  },
+  menuText: { fontFamily: 'Nunito_400Regular', fontSize: 15, color: Colors.text, flex: 1 },
   signOutItem: { borderBottomWidth: 0, marginTop: 4 },
   signOutText: { color: Colors.error, fontFamily: 'Nunito_700Bold' },
   deleteRow: { alignItems: 'center', marginTop: 8 },
-  deleteText: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 13,
-    color: Colors.textMuted,
-    textDecorationLine: 'underline',
-  },
-  version: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  unitTogglesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 12,
-  },
-  weightUnitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  weightUnitLabel: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 13,
-    color: Colors.textLight,
-  },
-  unitToggle: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-  },
-  unitBtn: {
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    backgroundColor: Colors.surface,
-  },
-  unitBtnActive: { backgroundColor: Colors.primary },
-  unitBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
-  unitBtnTextActive: { color: Colors.textWhite },
+  deleteText: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textMuted, textDecorationLine: 'underline' },
+  version: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 8, marginBottom: 16 },
 });

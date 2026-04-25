@@ -9,7 +9,32 @@
     "web": "expo start --web",
     "build:ios": "eas build --platform ios --profile production",
     "build:preview": "eas build --platform ios --profile preview",
-    "submit:ios": "eas submit --platform ios"
+    "submit:ios": "eas submit --platform ios",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepare": "husky"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "setupFilesAfterEnv": [
+      "@testing-library/jest-native/extend-expect"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@ungap/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1",
+      "^expo/src/winter$": "<rootDir>/__mocks__/expo-winter.js"
+    },
+    "testMatch": [
+      "**/__tests__/**/*.test.ts",
+      "**/__tests__/**/*.test.tsx"
+    ],
+    "bail": 1
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -47,7 +72,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
+    "husky": "^9.1.7",
+    "jest": "^30.3.0",
+    "jest-expo": "^55.0.16",
+    "react-test-renderer": "^19.1.0",
     "typescript": "~5.9.2"
   },
   "overrides": {

@@ -28,6 +28,7 @@ export default function SnapScreen() {
     : [{ granted: false }, async () => {}];
   const cameraRef = useRef<any>(null);
   const [flash, setFlash] = useState<'on' | 'off'>('off');
+  const [capturing, setCapturing] = useState(false);
   const { setCapturedPhoto } = useFoodLogStore();
   const { isGuest } = useAuthStore();
 
@@ -35,6 +36,8 @@ export default function SnapScreen() {
   const shutterStyle = useAnimatedStyle(() => ({ transform: [{ scale: shutterScale.value }] }));
 
   const handleCapture = async () => {
+    if (capturing) return;
+    setCapturing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     shutterScale.value = withSequence(
       withTiming(0.85, { duration: 80 }),
@@ -42,7 +45,11 @@ export default function SnapScreen() {
     );
 
     try {
-      const photo = await cameraRef.current?.takePictureAsync({
+      if (!cameraRef.current) {
+        Alert.alert('Camera Error', 'Camera is not ready. Please try again.');
+        return;
+      }
+      const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.8,
         exif: false,
@@ -57,26 +64,36 @@ export default function SnapScreen() {
       router.push('/snap-result');
     } catch {
       Alert.alert('Camera Error', 'Unable to take photo. Please try again.');
+    } finally {
+      setCapturing(false);
     }
   };
 
   const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      base64: true,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      if (!asset.base64) {
-        Alert.alert('Error', 'Could not load image data. Please try again.');
-        return;
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        if (!asset.base64) {
+          Alert.alert('Error', 'Could not load image data. Please try again.');
+          return;
+        }
+        setCapturedPhoto(asset.uri, asset.base64);
+        router.push('/snap-result');
       }
-      setCapturedPhoto(asset.uri, asset.base64);
-      router.push('/snap-result');
+    } catch {
+      Alert.alert('Error', 'Could not open photo library. Please try again.');
+    } finally {
+      setCapturing(false);
     }
   };
 
@@ -158,13 +175,13 @@ export default function SnapScreen() {
 
 
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickImage}>
-            <Ionicons name="images-outline" size={28} color={Colors.textWhite} />
-            <Text style={styles.galleryText}>Gallery</Text>
+          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickImage} disabled={capturing}>
+            <Ionicons name="images-outline" size={28} color={capturing ? 'rgba(255,255,255,0.4)' : Colors.textWhite} />
+            <Text style={[styles.galleryText, capturing && { opacity: 0.4 }]}>Gallery</Text>
           </TouchableOpacity>
 
           <Animated.View style={shutterStyle}>
-            <TouchableOpacity style={styles.shutter} onPress={handleCapture}>
+            <TouchableOpacity style={[styles.shutter, capturing && { opacity: 0.5 }]} onPress={handleCapture} disabled={capturing}>
               <View style={styles.shutterInner} />
             </TouchableOpacity>
           </Animated.View>

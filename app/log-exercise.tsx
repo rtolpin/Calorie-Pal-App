@@ -142,12 +142,45 @@ export default function LogExerciseScreen() {
 
           <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.card}>
             <Text style={styles.sectionLabel}>Duration</Text>
+
+            {/* Quick preset buttons */}
+            <Text style={styles.durationSubLabel}>Quick select</Text>
+            <View style={styles.presetDurationGrid}>
+              {[15, 30, 45, 60, 75, 90, 120].map((mins) => (
+                <TouchableOpacity
+                  key={mins}
+                  style={[
+                    styles.durationPresetBtn,
+                    parseInt(duration) === mins && styles.durationPresetBtnActive,
+                  ]}
+                  onPress={() => {
+                    setDuration(String(mins));
+                    if (selectedPreset !== null) {
+                      setCalories(String(Math.round(EXERCISE_PRESETS[selectedPreset].cal_per_min * mins)));
+                    }
+                  }}
+                >
+                  <Text style={[
+                    styles.durationPresetText,
+                    parseInt(duration) === mins && styles.durationPresetTextActive,
+                  ]}>
+                    {mins >= 60 ? `${mins / 60}h` : `${mins}m`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Fine-tune row */}
+            <Text style={styles.durationSubLabel}>Fine-tune</Text>
             <View style={styles.durationRow}>
+              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-10)}>
+                <Text style={styles.durationBtnText}>−10</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-5)}>
-                <Ionicons name="remove" size={20} color={Colors.text} />
+                <Text style={styles.durationBtnText}>−5</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(-1)}>
-                <Text style={styles.durationSmallBtn}>−1</Text>
+                <Text style={styles.durationBtnText}>−1</Text>
               </TouchableOpacity>
 
               <View style={styles.durationDisplay}>
@@ -167,10 +200,13 @@ export default function LogExerciseScreen() {
               </View>
 
               <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(1)}>
-                <Text style={styles.durationSmallBtn}>+1</Text>
+                <Text style={styles.durationBtnText}>+1</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(5)}>
-                <Ionicons name="add" size={20} color={Colors.text} />
+                <Text style={styles.durationBtnText}>+5</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.durationBtn} onPress={() => adjustDuration(10)}>
+                <Text style={styles.durationBtnText}>+10</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -193,6 +229,12 @@ export default function LogExerciseScreen() {
                 Estimated from {EXERCISE_PRESETS[selectedPreset].cal_per_min} cal/min × {duration} min
               </Text>
             )}
+            <View style={styles.disclaimerBox}>
+              <Text style={styles.disclaimerTitle}>⚠️ Calorie Estimate Disclaimer</Text>
+              <Text style={styles.disclaimerText}>
+                Calories burned are estimated using average MET (Metabolic Equivalent of Task) values for each activity. Actual calories burned depend on your body weight, age, fitness level, and exercise intensity — and may differ significantly from this estimate. For precise tracking, consider using a heart rate monitor or fitness tracker.
+              </Text>
+            </View>
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.card}>
@@ -319,33 +361,69 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  durationSubLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.textLight,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  presetDurationGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  durationPresetBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    minWidth: 52,
+    alignItems: 'center',
+  },
+  durationPresetBtnActive: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  durationPresetText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.text,
+  },
+  durationPresetTextActive: {
+    color: Colors.textWhite,
+  },
   durationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   durationBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
     backgroundColor: Colors.background,
     borderWidth: 1.5,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 40,
   },
-  durationSmallBtn: {
+  durationBtnText: {
     fontFamily: 'Nunito_700Bold',
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.text,
   },
-  durationDisplay: { alignItems: 'center', minWidth: 90 },
+  durationDisplay: { alignItems: 'center', minWidth: 80 },
   durationInput: {
     fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 40,
+    fontSize: 36,
     color: Colors.secondary,
-    width: 90,
+    width: 80,
   },
   durationUnit: {
     fontFamily: 'Nunito_400Regular',
@@ -375,6 +453,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textLight,
     marginTop: 8,
+  },
+  disclaimerBox: {
+    marginTop: 14,
+    backgroundColor: '#FFF8E7',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  disclaimerTitle: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  disclaimerText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 11,
+    color: Colors.text,
+    lineHeight: 17,
   },
   notesInput: {
     fontFamily: 'Nunito_400Regular',

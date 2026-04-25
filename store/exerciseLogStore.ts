@@ -32,14 +32,11 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
     try {
       if (isGuest) {
         const logs = await LocalStorage.getGuestExerciseLogs();
-        set({ exerciseLogs: logs, isLoading: false });
+        set({ exerciseLogs: logs });
         return;
       }
 
-      if (!userId) {
-        set({ isLoading: false });
-        return;
-      }
+      if (!userId) return;
 
       const { data, error } = await supabase
         .from('exercise_logs')
@@ -48,8 +45,10 @@ export const useExerciseLogStore = create<ExerciseLogState>((set) => ({
         .order('logged_at', { ascending: false });
 
       if (error) throw error;
-      set({ exerciseLogs: (data as ExerciseLog[]) || [], isLoading: false });
+      set({ exerciseLogs: (data as ExerciseLog[]) || [] });
     } catch {
+      // silent — keep existing logs on screen
+    } finally {
       set({ isLoading: false });
     }
   },

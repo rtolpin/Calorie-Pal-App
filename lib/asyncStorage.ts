@@ -91,3 +91,25 @@ export async function clearGuestData(): Promise<void> {
 export function generateId(): string {
   return `guest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
+
+// Water intake (cups per day, keyed by date)
+export async function getWaterCups(date: string): Promise<number> {
+  const raw = await AsyncStorage.getItem(`water_cups_${date}`);
+  return raw ? parseInt(raw, 10) : 0;
+}
+
+export async function setWaterCups(date: string, cups: number): Promise<void> {
+  await AsyncStorage.setItem(`water_cups_${date}`, String(Math.max(0, cups)));
+}
+
+// Mood logging (keyed by date)
+export type Mood = 'great' | 'good' | 'okay' | 'low' | 'stressed' | 'tired';
+
+export async function getMood(date: string): Promise<Mood | null> {
+  const raw = await AsyncStorage.getItem(`mood_${date}`);
+  return (raw as Mood) || null;
+}
+
+export async function setMood(date: string, mood: Mood): Promise<void> {
+  await AsyncStorage.setItem(`mood_${date}`, mood);
+}

@@ -43,7 +43,10 @@ export default function CreateAccountScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await signUp(email.trim(), password);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
+      );
+      await Promise.race([signUp(email.trim(), password), timeout]);
       router.replace({
         pathname: '/(auth)/onboarding',
         params: { name: name.trim() },

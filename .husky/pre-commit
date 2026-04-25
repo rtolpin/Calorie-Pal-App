@@ -1,0 +1,21 @@
+#!/bin/sh
+echo ""
+echo "🧪 Running tests before commit..."
+echo "──────────────────────────────────"
+
+npm test -- --watchAll=false --bail --passWithNoTests
+
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "❌ Tests failed — commit blocked."
+  echo "   Fix the failing tests and try again."
+  echo ""
+  exit 1
+fi
+
+echo ""
+echo "✅ All tests passed — proceeding with commit."
+echo ""
+exit 0

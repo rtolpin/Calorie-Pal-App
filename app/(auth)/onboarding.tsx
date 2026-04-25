@@ -72,12 +72,16 @@ export default function OnboardingScreen() {
   };
 
   const handleFinish = async () => {
+    if (!session?.user.id) {
+      router.replace('/(tabs)/');
+      return;
+    }
     setLoading(true);
     try {
       const dailyCalories = customCalories ? parseInt(customCalories) : getRecommendedCalories();
 
       const profileData = {
-        id: session?.user.id,
+        id: session.user.id,
         name: name || 'User',
         age: parseInt(age) || null,
         weight_kg: weightInKg() || null,
@@ -90,15 +94,18 @@ export default function OnboardingScreen() {
         fat_target_pct: 30,
         notification_enabled: true,
         notification_time: '19:00',
-        email: session?.user.email,
+        email: session.user.email,
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert(profileData)
-        .select()
-        .single();
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
+      );
+
+      const { data, error } = await Promise.race([
+        supabase.from('profiles').upsert(profileData).select().single(),
+        timeout,
+      ]);
 
       if (error) throw error;
       setProfile(data as any);

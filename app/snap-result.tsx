@@ -235,6 +235,50 @@ export default function SnapResultScreen() {
             </Animated.View>
           )}
 
+          {!error && (
+            <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.aiDisclaimerBox}>
+              <Text style={styles.aiDisclaimerTitle}>📷 How AI Estimates Calories from Your Photo</Text>
+              <Text style={styles.aiDisclaimerBody}>
+                CaloriePal uses <Text style={styles.aiDisclaimerBold}>GPT-4o Vision</Text> to analyze your photo through a multi-step process:
+              </Text>
+
+              {[
+                { step: '1', label: 'Container size', detail: 'Identifies the vessel (small bowl, dinner plate, takeout box) and estimates its volume.' },
+                { step: '2', label: 'Fill level', detail: 'Estimates how full it is — quarter, half, heaped — to gauge total volume.' },
+                { step: '3', label: 'Depth & height', detail: 'A heaped bowl holds far more than a flat one; the AI accounts for vertical depth.' },
+                { step: '4', label: 'Food density', detail: 'Dense foods (rice, meat, cheese) are calorie-heavy vs light foods (salad, broth).' },
+                { step: '5', label: 'Each component', detail: 'Every visible ingredient is identified and its weight estimated individually.' },
+              ].map(({ step, label, detail }) => (
+                <View key={step} style={styles.aiStep}>
+                  <View style={styles.aiStepBadge}>
+                    <Text style={styles.aiStepNum}>{step}</Text>
+                  </View>
+                  <View style={styles.aiStepContent}>
+                    <Text style={styles.aiStepLabel}>{label}</Text>
+                    <Text style={styles.aiStepDetail}>{detail}</Text>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.aiLimitationsBox}>
+                <Text style={styles.aiLimitationsTitle}>⚠️ Known limitations</Text>
+                {[
+                  'Hidden ingredients (oil, butter, sauces) are often underestimated',
+                  'Overlapping or covered foods are invisible to the AI',
+                  'Estimates assume standard recipes — homemade meals vary widely',
+                  'Accuracy is lower for complex or mixed dishes',
+                  'Macro ratios (protein/carbs/fat) are approximated from typical recipes',
+                ].map((item, i) => (
+                  <Text key={i} style={styles.aiLimitationItem}>• {item}</Text>
+                ))}
+              </View>
+
+              <Text style={styles.aiDisclaimerFooter}>
+                Always review and correct the values below before logging. These are starting estimates, not precise measurements. For accurate tracking, weigh your food with a kitchen scale.
+              </Text>
+            </Animated.View>
+          )}
+
           {analysis?.foods && analysis.foods.length > 0 && !manualMode && (
             <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.foodsCard}>
               <Text style={styles.cardTitle}>Detected Foods (tap to remove)</Text>
@@ -307,15 +351,18 @@ export default function SnapResultScreen() {
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.card}>
-            <Text style={styles.cardTitle}>Notes (optional)</Text>
+            <Text style={styles.cardTitle}>📝 Your Notes</Text>
+            <Text style={styles.notesHint}>
+              How did it taste? How did you feel after? Any tweaks next time?
+            </Text>
             <TextInput
               style={styles.notesInput}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Add any notes about this meal..."
+              placeholder="e.g. Felt great after this meal! Next time less salt."
               placeholderTextColor={Colors.textMuted}
               multiline
-              numberOfLines={3}
+              numberOfLines={4}
             />
           </Animated.View>
 
@@ -536,4 +583,66 @@ const styles = StyleSheet.create({
   },
   logBtn: { marginBottom: 12 },
   cancelBtn: {},
+  aiDisclaimerBox: {
+    backgroundColor: '#EAF6FF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary,
+  },
+  aiDisclaimerTitle: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  aiDisclaimerBody: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.text,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  aiDisclaimerBold: { fontFamily: 'Nunito_700Bold' },
+  aiStep: { flexDirection: 'row', gap: 10, marginBottom: 8, alignItems: 'flex-start' },
+  aiStepBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  aiStepNum: { fontFamily: 'Nunito_800ExtraBold', fontSize: 11, color: Colors.textWhite },
+  aiStepContent: { flex: 1 },
+  aiStepLabel: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.text },
+  aiStepDetail: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.textLight, lineHeight: 16, marginTop: 1 },
+  aiLimitationsBox: {
+    backgroundColor: '#FFF8E7',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  aiLimitationsTitle: { fontFamily: 'Nunito_700Bold', fontSize: 12, color: Colors.text, marginBottom: 6 },
+  aiLimitationItem: { fontFamily: 'Nunito_400Regular', fontSize: 11, color: Colors.text, lineHeight: 18 },
+  aiDisclaimerFooter: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 11,
+    color: Colors.textLight,
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
+  notesHint: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 12,
+    color: Colors.textLight,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
 });

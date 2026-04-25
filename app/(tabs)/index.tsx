@@ -27,7 +27,7 @@ import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { MacroRow } from '../../components/ui/MacroBadge';
 import { Colors } from '../../constants/Colors';
 import { FoodLog, ExerciseLog } from '../../types';
-import { getGuestProfile, saveGuestProfile } from '../../lib/asyncStorage';
+import { getGuestProfile, saveGuestProfile, getWaterCups, setWaterCups, getMood, setMood, Mood } from '../../lib/asyncStorage';
 
 const MOTIVATIONAL_TIPS = [
   '💧 Staying hydrated can reduce hunger — aim for 8 glasses today!',
@@ -64,6 +64,8 @@ export default function HomeScreen() {
   const [goalInput, setGoalInput] = useState('');
   const [savingGoal, setSavingGoal] = useState(false);
   const [guestCalorieGoal, setGuestCalorieGoal] = useState<number | null>(null);
+  const [waterCups, setWaterCupsState] = useState(0);
+  const [todayMood, setTodayMood] = useState<Mood | null>(null);
 
   const tip = MOTIVATIONAL_TIPS[new Date().getDay() % MOTIVATIONAL_TIPS.length];
   const todayStr = getTodayString();
@@ -109,6 +111,25 @@ export default function HomeScreen() {
       });
     }
   }, [isGuest]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getWaterCups(todayStr).then(setWaterCupsState);
+      getMood(todayStr).then(setTodayMood);
+    }, [todayStr])
+  );
+
+  const handleWaterChange = async (delta: number) => {
+    const next = Math.max(0, waterCups + delta);
+    setWaterCupsState(next);
+    await setWaterCups(todayStr, next);
+  };
+
+  const handleMoodSelect = async (mood: Mood) => {
+    setTodayMood(mood);
+    await setMood(todayStr, mood);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
 
   const handleOpenGoalEdit = () => {
     setGoalInput(String(calorieGoal));
@@ -333,6 +354,62 @@ export default function HomeScreen() {
           </Animated.View>
         )}
 
+        {/* Water Intake */}
+        <Animated.View entering={FadeInDown.delay(380).springify()} style={styles.waterCard}>
+          <View style={styles.waterHeader}>
+            <Text style={styles.waterTitle}>💧 Water Intake</Text>
+            <Text style={styles.waterGoal}>Goal: 8 cups</Text>
+          </View>
+          <View style={styles.waterRow}>
+            <TouchableOpacity style={styles.waterBtn} onPress={() => handleWaterChange(-1)}>
+              <Text style={styles.waterBtnText}>−</Text>
+            </TouchableOpacity>
+            <View style={styles.waterCountContainer}>
+              <Text style={styles.waterCount}>{waterCups}</Text>
+              <Text style={styles.waterUnit}>cups today</Text>
+            </View>
+            <TouchableOpacity style={[styles.waterBtn, styles.waterBtnAdd]} onPress={() => handleWaterChange(1)}>
+              <Text style={[styles.waterBtnText, { color: Colors.textWhite }]}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.waterDotsRow}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <View
+                key={i}
+                style={[styles.waterDot, i < waterCups && styles.waterDotFilled]}
+              />
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* Mood Tracker */}
+        <Animated.View entering={FadeInDown.delay(390).springify()} style={styles.moodCard}>
+          <Text style={styles.moodTitle}>😊 How are you feeling today?</Text>
+          <View style={styles.moodRow}>
+            {(
+              [
+                { mood: 'great', emoji: '😄', label: 'Great' },
+                { mood: 'good', emoji: '😊', label: 'Good' },
+                { mood: 'okay', emoji: '😐', label: 'Okay' },
+                { mood: 'low', emoji: '😞', label: 'Low' },
+                { mood: 'stressed', emoji: '😤', label: 'Stressed' },
+                { mood: 'tired', emoji: '😴', label: 'Tired' },
+              ] as { mood: Mood; emoji: string; label: string }[]
+            ).map(({ mood, emoji, label }) => (
+              <TouchableOpacity
+                key={mood}
+                style={[styles.moodBtn, todayMood === mood && styles.moodBtnActive]}
+                onPress={() => handleMoodSelect(mood)}
+              >
+                <Text style={styles.moodEmoji}>{emoji}</Text>
+                <Text style={[styles.moodLabel, todayMood === mood && styles.moodLabelActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.tipCard}>
           <Text style={styles.tipTitle}>💡 Tip of the Day</Text>
           <Text style={styles.tipText}>{tip}</Text>
@@ -532,4 +609,112 @@ const styles = StyleSheet.create({
   },
   tipTitle: { fontFamily: 'Nunito_700Bold', fontSize: 14, color: Colors.text, marginBottom: 6 },
   tipText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.text, lineHeight: 20 },
+
+  // Water card
+  waterCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  waterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  waterTitle: { fontFamily: 'Nunito_700Bold', fontSize: 16, color: Colors.text },
+  waterGoal: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  waterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.background,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waterBtnAdd: {
+    backgroundColor: '#4FC3F7',
+    borderColor: '#4FC3F7',
+  },
+  waterBtnText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 22,
+    color: Colors.text,
+    lineHeight: 26,
+  },
+  waterCountContainer: { alignItems: 'center' },
+  waterCount: { fontFamily: 'Nunito_800ExtraBold', fontSize: 40, color: '#4FC3F7' },
+  waterUnit: { fontFamily: 'Nunito_400Regular', fontSize: 12, color: Colors.textLight },
+  waterDotsRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  waterDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.borderLight,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  waterDotFilled: {
+    backgroundColor: '#4FC3F7',
+    borderColor: '#0288D1',
+  },
+
+  // Mood card
+  moodCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  moodTitle: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 16,
+    color: Colors.text,
+    marginBottom: 14,
+  },
+  moodRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  moodBtn: {
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    flex: 1,
+    marginHorizontal: 3,
+  },
+  moodBtnActive: {
+    borderColor: Colors.secondary,
+    backgroundColor: Colors.secondary + '20',
+  },
+  moodEmoji: { fontSize: 22, marginBottom: 4 },
+  moodLabel: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 10,
+    color: Colors.textLight,
+    textAlign: 'center',
+  },
+  moodLabelActive: {
+    fontFamily: 'Nunito_700Bold',
+    color: Colors.secondary,
+  },
 });

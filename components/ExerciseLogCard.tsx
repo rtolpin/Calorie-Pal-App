@@ -70,10 +70,15 @@ export function ExerciseLogCard({ log, index = 0, onDelete }: ExerciseLogCardPro
           </View>
 
           {log.notes ? (
-            <Text style={styles.notes} numberOfLines={1}>
-              {log.notes}
-            </Text>
+            <View style={styles.notesBox}>
+              <Text style={styles.notesLabel}>📝 Notes</Text>
+              <Text style={styles.notesText}>{log.notes}</Text>
+            </View>
           ) : null}
+
+          <Text style={styles.disclaimer}>
+            * Calorie burn is estimated based on average metabolic rates for this activity type and duration. Actual calories burned vary by individual body weight, fitness level, and intensity.
+          </Text>
         </View>
       </View>
     </Animated.View>
@@ -142,11 +147,32 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   calorieValue: { color: Colors.success },
-  notes: {
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 12,
+  notesBox: {
+    marginTop: 8,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.secondary,
+  },
+  notesLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
     color: Colors.textLight,
-    marginTop: 6,
+    marginBottom: 2,
+  },
+  notesText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 13,
+    color: Colors.text,
+    lineHeight: 18,
+  },
+  disclaimer: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 8,
     fontStyle: 'italic',
+    lineHeight: 14,
   },
 });

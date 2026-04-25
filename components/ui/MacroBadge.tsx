@@ -19,10 +19,10 @@ export function MacroBadge({ type, value, unit = 'g', size = 'md' }: MacroBadgeP
     <View style={[styles.badge, { backgroundColor: color + '22', borderColor: color + '55' }]}>
       <Text style={[styles.emoji, isSmall && styles.emojiSm]}>{emoji}</Text>
       <View>
+        <Text style={[styles.label, { color }, isSmall && styles.labelSm]}>{label}</Text>
         <Text style={[styles.value, { color }, isSmall && styles.valueSm]}>
           {Math.round(value)}{unit}
         </Text>
-        {!isSmall && <Text style={[styles.label, { color }]}>{label}</Text>}
       </View>
     </View>
   );
@@ -107,7 +107,8 @@ const styles = StyleSheet.create({
   emojiSm: { fontSize: 11 },
   value: { fontFamily: 'Nunito_700Bold', fontSize: 13 },
   valueSm: { fontSize: 11 },
-  label: { fontFamily: 'Nunito_400Regular', fontSize: 10 },
+  label: { fontFamily: 'Nunito_700Bold', fontSize: 10 },
+  labelSm: { fontSize: 9 },
 
   // Grid card design (used in md size)
   grid: { gap: 10, marginTop: 4 },

@@ -65,23 +65,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signIn: async (email, password) => {
     set({ isLoading: true });
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    set({ isLoading: false });
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   signUp: async (email, password) => {
     set({ isLoading: true });
-    const { error: signUpError } = await supabase.auth.signUp({ email, password });
-    if (signUpError) {
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      if (signUpError) throw signUpError;
+      // Immediately sign in — works when email confirmation is disabled in Supabase.
+      // If confirmation is required, this throws so the UI can prompt the user to check email.
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
+    } finally {
       set({ isLoading: false });
-      throw signUpError;
     }
-    // Immediately sign in — works when email confirmation is disabled in Supabase.
-    // If confirmation is required, this throws so the UI can prompt the user to check email.
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    set({ isLoading: false });
-    if (signInError) throw signInError;
   },
 
   signOut: async () => {
