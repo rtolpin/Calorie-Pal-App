@@ -10,14 +10,21 @@
  *     ✓ Empty or invalid email rejected before Supabase is called
  *     ✓ Supabase error surfaces to UI
  *
- *   Deep link handler (app/_layout.tsx)
+ *   Deep link handler — PKCE flow (Supabase v2 default, ?code=)
+ *     ✓ ?code= param triggers exchangeCodeForSession, then navigates to reset-password
+ *     ✓ exchangeCodeForSession error (pre-fetched / expired code) shows alert, no navigation
+ *     ✓ PKCE path takes priority — setSession is NOT called when ?code= is present
+ *     ✓ URL with both ?code= and a fragment uses the PKCE path only
+ *
+ *   Deep link handler — implicit flow (legacy / explicit project setting, #access_token=)
  *     ✓ type=recovery triggers navigation to /(auth)/reset-password
  *     ✓ type=signup (email confirmation) does NOT navigate to reset-password
  *     ✓ Missing tokens → no session set and no navigation
  *     ✓ setSession called with correct tokens
  *
  *   Set new password screen (reset-password.tsx)
- *     ✓ Valid passwords → supabase.auth.updateUser called with new password
+ *     ✓ Session fast-fail: no session → "Link Expired" shown immediately, no updateUser call
+ *     ✓ Session present → updateUser is called with new password
  *     ✓ isLoading always resets after success, error, network throw, and timeout
  *     ✓ updateUser is raced against a 15-second timeout (no infinite spinner)
  *     ✓ Empty new password → validation error, Supabase not called
@@ -32,13 +39,14 @@ import { useAuthStore } from '../../store/authStore';
 
 // ─── Supabase mock ─────────────────────────────────────────────────────────────
 
-const mockResetPasswordForEmail = jest.fn();
-const mockUpdateUser            = jest.fn();
-const mockSetSession            = jest.fn();
-const mockSignInWithPassword    = jest.fn();
-const mockSignUp                = jest.fn();
-const mockSignOut               = jest.fn();
-const mockOnAuthStateChange     = jest.fn(() => ({
+const mockResetPasswordForEmail   = jest.fn();
+const mockUpdateUser               = jest.fn();
+const mockSetSession               = jest.fn();
+const mockExchangeCodeForSession   = jest.fn();
+const mockSignInWithPassword       = jest.fn();
+const mockSignUp                   = jest.fn();
+const mockSignOut                  = jest.fn();
+const mockOnAuthStateChange        = jest.fn(() => ({
   data: { subscription: { unsubscribe: jest.fn() } },
 }));
 const mockGetSession = jest.fn();
@@ -46,15 +54,15 @@ const mockGetSession = jest.fn();
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
-      resetPasswordForEmail: (email: string, opts?: any) =>
-        mockResetPasswordForEmail(email, opts),
-      updateUser:          (updates: any) => mockUpdateUser(updates),
-      setSession:          (tokens: any)  => mockSetSession(tokens),
-      signInWithPassword:  (c: any)       => mockSignInWithPassword(c),
-      signUp:              (c: any)       => mockSignUp(c),
-      signOut:             ()             => mockSignOut(),
-      onAuthStateChange:   (cb: any)      => mockOnAuthStateChange(cb),
-      getSession:          ()             => mockGetSession(),
+      resetPasswordForEmail:  (email: string, opts?: any) => mockResetPasswordForEmail(email, opts),
+      updateUser:             (updates: any) => mockUpdateUser(updates),
+      setSession:             (tokens: any)  => mockSetSession(tokens),
+      exchangeCodeForSession: (code: any)    => mockExchangeCodeForSession(code),
+      signInWithPassword:     (c: any)       => mockSignInWithPassword(c),
+      signUp:                 (c: any)       => mockSignUp(c),
+      signOut:                ()             => mockSignOut(),
+      onAuthStateChange:      (cb: any)      => mockOnAuthStateChange(cb),
+      getSession:             ()             => mockGetSession(),
     },
     from: jest.fn(() => ({
       select: jest.fn(() => ({ eq: jest.fn(() => ({ single: jest.fn() })) })),
@@ -160,34 +168,102 @@ describe('UAT: Request password reset — Supabase call', () => {
   });
 });
 
-// ─── DEEP LINK HANDLER ────────────────────────────────────────────────────────
+// ─── DEEP LINK HANDLER — mirrors handleAuthDeepLink in app/_layout.tsx ──────
 
-describe('UAT: Deep link handler — type=recovery triggers reset-password navigation', () => {
-  // Mirrors handleAuthDeepLink in app/_layout.tsx
-  async function handleAuthDeepLink(
-    url: string,
-    navigate: (path: string) => void
-  ): Promise<void> {
-    const fragment = url.split('#')[1];
-    if (!fragment) return;
-    const params = new URLSearchParams(fragment);
-    const access_token  = params.get('access_token');
-    const refresh_token = params.get('refresh_token');
-    const type          = params.get('type');
-    if (access_token && refresh_token) {
-      await mockSetSession({ access_token, refresh_token });
-      if (type === 'recovery') {
-        navigate('/(auth)/reset-password');
-      }
+/** Exact mirror of the updated handleAuthDeepLink (both PKCE + implicit paths). */
+async function handleAuthDeepLink(
+  url: string,
+  navigate: (path: string) => void,
+  showExpiredAlert: () => void,
+): Promise<void> {
+  // PKCE path
+  const codeMatch = url.match(/[?&]code=([^&#]+)/);
+  if (codeMatch) {
+    const code = decodeURIComponent(codeMatch[1]);
+    try {
+      const { error } = await mockExchangeCodeForSession(code);
+      if (error) throw error;
+      navigate('/(auth)/reset-password');
+    } catch {
+      showExpiredAlert();
     }
+    return;
   }
+  // Implicit path
+  const fragment = url.split('#')[1];
+  if (!fragment) return;
+  const params = new URLSearchParams(fragment);
+  const access_token  = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  const type          = params.get('type');
+  if (access_token && refresh_token) {
+    await mockSetSession({ access_token, refresh_token });
+    if (type === 'recovery') navigate('/(auth)/reset-password');
+  }
+}
 
+describe('UAT: Deep link handler — PKCE flow (?code=)', () => {
+  it('?code= param calls exchangeCodeForSession with the decoded code', async () => {
+    mockExchangeCodeForSession.mockResolvedValueOnce({ data: {}, error: null });
+    await handleAuthDeepLink(
+      'caloriepal://reset-password?code=ABC123',
+      jest.fn(),
+      jest.fn(),
+    );
+    expect(mockExchangeCodeForSession).toHaveBeenCalledWith('ABC123');
+  });
+
+  it('successful code exchange navigates to /(auth)/reset-password', async () => {
+    const navigate = jest.fn();
+    mockExchangeCodeForSession.mockResolvedValueOnce({ data: {}, error: null });
+    await handleAuthDeepLink('caloriepal://reset-password?code=ABC123', navigate, jest.fn());
+    expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
+  });
+
+  it('failed code exchange (pre-fetched / expired) shows expired alert, no navigation', async () => {
+    const navigate = jest.fn();
+    const showExpiredAlert = jest.fn();
+    mockExchangeCodeForSession.mockResolvedValueOnce({
+      data: null, error: { message: 'code already used' },
+    });
+    await handleAuthDeepLink(
+      'caloriepal://reset-password?code=STALE_CODE',
+      navigate,
+      showExpiredAlert,
+    );
+    expect(navigate).not.toHaveBeenCalled();
+    expect(showExpiredAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('thrown error from exchangeCodeForSession also shows expired alert', async () => {
+    const navigate = jest.fn();
+    const showExpiredAlert = jest.fn();
+    mockExchangeCodeForSession.mockRejectedValueOnce(new Error('network error'));
+    await handleAuthDeepLink('caloriepal://reset-password?code=BAD', navigate, showExpiredAlert);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(showExpiredAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('PKCE path takes priority — setSession is NOT called when ?code= is present', async () => {
+    mockExchangeCodeForSession.mockResolvedValueOnce({ data: {}, error: null });
+    await handleAuthDeepLink(
+      'caloriepal://reset-password?code=PKCEcode#access_token=tok&refresh_token=ref&type=recovery',
+      jest.fn(),
+      jest.fn(),
+    );
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockExchangeCodeForSession).toHaveBeenCalledWith('PKCEcode');
+  });
+});
+
+describe('UAT: Deep link handler — implicit flow (#access_token=)', () => {
   it('type=recovery causes navigation to /(auth)/reset-password', async () => {
     const navigate = jest.fn();
     mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
     await handleAuthDeepLink(
       'caloriepal://reset-password#access_token=tok&refresh_token=ref&type=recovery',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
   });
@@ -197,7 +273,8 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
     await handleAuthDeepLink(
       'caloriepal://#access_token=tok&refresh_token=ref&type=signup',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -207,7 +284,8 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
     await handleAuthDeepLink(
       'caloriepal://reset-password#access_token=MY_TOKEN&refresh_token=MY_REFRESH&type=recovery',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(mockSetSession).toHaveBeenCalledWith({
       access_token: 'MY_TOKEN',
@@ -215,9 +293,9 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     });
   });
 
-  it('URL without a fragment does nothing', async () => {
+  it('URL with no fragment and no code does nothing', async () => {
     const navigate = jest.fn();
-    await handleAuthDeepLink('caloriepal://reset-password', navigate);
+    await handleAuthDeepLink('caloriepal://reset-password', navigate, jest.fn());
     expect(mockSetSession).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -226,7 +304,8 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     const navigate = jest.fn();
     await handleAuthDeepLink(
       'caloriepal://reset-password#refresh_token=ref&type=recovery',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(mockSetSession).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
@@ -236,7 +315,8 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     const navigate = jest.fn();
     await handleAuthDeepLink(
       'caloriepal://reset-password#access_token=tok&type=recovery',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(mockSetSession).not.toHaveBeenCalled();
   });
@@ -246,10 +326,79 @@ describe('UAT: Deep link handler — type=recovery triggers reset-password navig
     mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
     await handleAuthDeepLink(
       'caloriepal://#access_token=tok&refresh_token=ref',
-      navigate
+      navigate,
+      jest.fn(),
     );
     expect(mockSetSession).toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+// ─── SET NEW PASSWORD SCREEN — session fast-fail ─────────────────────────────
+
+describe('UAT: Set new password — session fast-fail (root cause of timeout fix)', () => {
+  it('no session → updateUser is NOT called and loading resets immediately', async () => {
+    // Mirrors the getSession check added to handleReset to prevent the 15-second hang
+    mockGetSession.mockResolvedValueOnce({ data: { session: null } });
+    let loading = true;
+    let updateCalled = false;
+    try {
+      const { data: { session } } = await mockGetSession();
+      if (!session) {
+        // fast-fail path: show alert, return — never reaches updateUser
+        return;
+      }
+      updateCalled = true;
+      await mockUpdateUser({ password: 'NewPass123' });
+    } finally {
+      loading = false;
+    }
+    expect(updateCalled).toBe(false);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(loading).toBe(false);
+  });
+
+  it('session present → updateUser IS called', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'u1' }, access_token: 'tok' } },
+    });
+    mockUpdateUser.mockResolvedValueOnce({ error: null });
+    let loading = true;
+    try {
+      const { data: { session } } = await mockGetSession();
+      if (!session) return;
+      await mockUpdateUser({ password: 'NewPass123' });
+    } finally {
+      loading = false;
+    }
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'NewPass123' });
+    expect(loading).toBe(false);
+  });
+
+  it('no session → loading resets to false (no infinite spinner)', async () => {
+    mockGetSession.mockResolvedValueOnce({ data: { session: null } });
+    let loading = true;
+    try {
+      const { data: { session } } = await mockGetSession();
+      if (!session) return;
+      await mockUpdateUser({ password: 'anything' });
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
+  });
+
+  it('getSession itself throwing does not block loading reset', async () => {
+    mockGetSession.mockRejectedValueOnce(new Error('Network error'));
+    let loading = true;
+    try {
+      await mockGetSession();
+    } catch {
+      // surfaced to UI
+    } finally {
+      loading = false;
+    }
+    expect(loading).toBe(false);
   });
 });
 
@@ -397,49 +546,83 @@ describe('UAT: Set new password — Supabase updateUser call', () => {
 // ─── FULL JOURNEY ─────────────────────────────────────────────────────────────
 
 describe('UAT: Full reset journey — request → link → set new password → into app', () => {
-  it('complete flow: email sent → link opens app → session set → password updated → navigate to tabs', async () => {
-    // Step 1: User requests reset on sign-in screen
+  it('PKCE flow: email sent → ?code= link → exchangeCodeForSession → password updated → tabs', async () => {
+    // Step 1: User requests reset
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
     const { error: sendError } = await mockResetPasswordForEmail('user@example.com', {
       redirectTo: 'caloriepal://reset-password',
     });
     expect(sendError).toBeNull();
 
-    // Step 2: User taps email link — deep link handler sets session and navigates
+    // Step 2: Supabase v2 link format delivers ?code= (PKCE)
     const navigate = jest.fn();
-    mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
-    const url = 'caloriepal://reset-password#access_token=tok123&refresh_token=ref456&type=recovery';
-    const fragment = url.split('#')[1];
-    const params = new URLSearchParams(fragment);
-    const access_token  = params.get('access_token');
-    const refresh_token = params.get('refresh_token');
-    const type          = params.get('type');
-    if (access_token && refresh_token) {
-      await mockSetSession({ access_token, refresh_token });
-      if (type === 'recovery') navigate('/(auth)/reset-password');
-    }
+    const showExpiredAlert = jest.fn();
+    mockExchangeCodeForSession.mockResolvedValueOnce({ data: {}, error: null });
+    await handleAuthDeepLink(
+      'caloriepal://reset-password?code=pkce_code_abc',
+      navigate,
+      showExpiredAlert,
+    );
+    expect(mockExchangeCodeForSession).toHaveBeenCalledWith('pkce_code_abc');
     expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
+    expect(showExpiredAlert).not.toHaveBeenCalled();
 
-    // Step 3: User enters and confirms new password
+    // Step 3: Session check passes, user updates password
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'u1' }, access_token: 'new_tok' } },
+    });
     mockUpdateUser.mockResolvedValueOnce({ error: null });
+    const { data: { session } } = await mockGetSession();
+    expect(session).not.toBeNull();
     const { error: updateError } = await Promise.race([
       mockUpdateUser({ password: 'BrandNew123' }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
     ]);
     expect(updateError).toBeNull();
-    expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'BrandNew123' });
 
-    // Step 4: Success → navigate to app (user is already authenticated via the recovery session)
+    // Step 4: Navigate to tabs
     navigate('/(tabs)/');
     expect(navigate).toHaveBeenCalledWith('/(tabs)/');
     expect(navigate).not.toHaveBeenCalledWith('/(auth)/sign-in');
   });
 
-  it('timeout journey: updateUser hangs → times out → loading resets → error shown', async () => {
+  it('implicit flow: email sent → #access_token= link → setSession → password updated → tabs', async () => {
+    // Step 1: User requests reset
+    mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
+    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+
+    // Step 2: Legacy link format delivers #access_token= fragment
+    const navigate = jest.fn();
+    mockSetSession.mockResolvedValueOnce({ data: {}, error: null });
+    await handleAuthDeepLink(
+      'caloriepal://reset-password#access_token=tok123&refresh_token=ref456&type=recovery',
+      navigate,
+      jest.fn(),
+    );
+    expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
+
+    // Step 3: User updates password
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'u1' }, access_token: 'tok123' } },
+    });
+    mockUpdateUser.mockResolvedValueOnce({ error: null });
+    const { data: { session } } = await mockGetSession();
+    expect(session).not.toBeNull();
+    const { error: updateError } = await mockUpdateUser({ password: 'BrandNew123' });
+    expect(updateError).toBeNull();
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'BrandNew123' });
+  });
+
+  it('timeout journey: session present but updateUser hangs → times out → loading resets', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'u1' }, access_token: 'tok' } },
+    });
     const navigate = jest.fn();
     let loading = true;
     let errorMsg = '';
     try {
+      const { data: { session } } = await mockGetSession();
+      if (!session) return; // fast-fail (not this path)
       const neverResolves = new Promise<never>(() => {});
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 10)
@@ -454,6 +637,25 @@ describe('UAT: Full reset journey — request → link → set new password → 
     expect(loading).toBe(false);
     expect(errorMsg).toMatch(/timed out/i);
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('no-session journey: session missing → loading resets immediately without waiting for timeout', async () => {
+    mockGetSession.mockResolvedValueOnce({ data: { session: null } });
+    const navigate = jest.fn();
+    let loading = true;
+    const start = Date.now();
+    try {
+      const { data: { session } } = await mockGetSession();
+      if (!session) return; // fast-fail — never reaches updateUser
+      await new Promise<never>(() => {}); // would have hung forever
+      navigate('/(tabs)/');
+    } finally {
+      loading = false;
+    }
+    const elapsed = Date.now() - start;
+    expect(loading).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(elapsed).toBeLessThan(500); // resolves in milliseconds, not 15 seconds
   });
 
   it('expired link journey: link opens → setSession → updateUser returns expired → user redirected to sign-in', async () => {

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -16,6 +17,28 @@ import { supabase } from '../lib/supabase';
 SplashScreen.preventAutoHideAsync();
 
 async function handleAuthDeepLink(url: string) {
+  // ── PKCE flow (Supabase v2 default) ──────────────────────────────────────────
+  // Reset-password emails now deliver a one-time ?code= query parameter.
+  // Must call exchangeCodeForSession — setSession will not work for these links.
+  const codeMatch = url.match(/[?&]code=([^&#]+)/);
+  if (codeMatch) {
+    const code = decodeURIComponent(codeMatch[1]);
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      router.replace('/(auth)/reset-password');
+    } catch (e: any) {
+      // Common failure: email-security scanners pre-fetch the link and consume the code
+      Alert.alert(
+        'Link Expired',
+        'This password reset link has already been used or has expired. Please request a new one from the sign-in screen.',
+        [{ text: 'Back to Sign In', onPress: () => router.replace('/(auth)/sign-in') }],
+      );
+    }
+    return;
+  }
+
+  // ── Implicit flow (legacy / explicit project setting) ────────────────────────
   // Supabase auth links arrive as: caloriepal://[path]#access_token=...&type=...
   const fragment = url.split('#')[1];
   if (!fragment) return;
@@ -26,7 +49,6 @@ async function handleAuthDeepLink(url: string) {
   if (access_token && refresh_token) {
     await supabase.auth.setSession({ access_token, refresh_token });
     if (type === 'recovery') {
-      // Password reset link — navigate to the set-new-password screen
       router.replace('/(auth)/reset-password');
     }
     // For type === 'signup' (email confirmation), onAuthStateChange handles navigation

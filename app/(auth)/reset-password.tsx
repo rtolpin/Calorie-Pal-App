@@ -44,6 +44,20 @@ export default function ResetPasswordScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
+      // Fast-fail: verify the recovery session exists before hitting the network.
+      // Without this check, updateUser hangs for the full timeout duration when
+      // the session is missing (e.g. PKCE code was never exchanged, or the link
+      // was pre-fetched by an email-security scanner and the code was consumed).
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert(
+          'Link Expired',
+          'Your password reset session has expired or the link was already used. Please request a new one from the sign-in screen.',
+          [{ text: 'Back to Sign In', onPress: () => router.replace('/(auth)/sign-in') }],
+        );
+        return;
+      }
+
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
       );
