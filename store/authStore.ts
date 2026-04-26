@@ -45,7 +45,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ isLoading: false, initialized: true });
       }
 
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        // PASSWORD_RECOVERY is owned by reset-password.tsx. Storing the
+        // temporary recovery session here causes updateUser to fail because
+        // the store update triggers re-renders that can tear down the session.
+        if (event === 'PASSWORD_RECOVERY') return;
+
         if (session) {
           const { data: profile } = await supabase
             .from('profiles')

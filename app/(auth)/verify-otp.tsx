@@ -58,12 +58,21 @@ export default function VerifyOTPScreen() {
           15000,
         ),
       );
-      const { error: verifyError } = await Promise.race([
+      const verifyResult = await Promise.race([
         supabase.auth.verifyOtp({ email, token: otp, type: 'recovery' }),
         timeout,
       ]);
-      if (verifyError) throw verifyError;
-      // verifyOtp establishes a recovery session — navigate to the set-new-password screen
+      if (verifyResult.error) throw verifyResult.error;
+      // Explicitly re-set the recovery session so reset-password.tsx has a
+      // guaranteed fresh token. onAuthStateChange skips PASSWORD_RECOVERY so
+      // the session only lives in the Supabase client, not the auth store.
+      const recoverySession = verifyResult.data?.session;
+      if (recoverySession) {
+        await supabase.auth.setSession({
+          access_token: recoverySession.access_token,
+          refresh_token: recoverySession.refresh_token,
+        });
+      }
       router.replace('/(auth)/reset-password');
     } catch (e: any) {
       const msg = (e?.message ?? '').toLowerCase();
@@ -235,13 +244,13 @@ const styles = StyleSheet.create({
   otpRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 4,
     marginBottom: 8,
   },
   otpBox: {
-    width: 46,
-    height: 56,
-    borderRadius: 12,
+    width: 34,
+    height: 44,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
@@ -263,7 +272,7 @@ const styles = StyleSheet.create({
   },
   otpChar: {
     fontFamily: 'Nunito_800ExtraBold',
-    fontSize: 24,
+    fontSize: 18,
     color: Colors.text,
   },
   hiddenInput: {
