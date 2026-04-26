@@ -3,9 +3,8 @@
  *
  * Verifies the full password-reset journey end-to-end:
  *
- *   Request reset (sign-in screen / profile screen)
- *     ✓ Calls supabase.auth.resetPasswordForEmail with correct email
- *     ✓ redirectTo is 'caloriepal://reset-password' so the email link opens the app
+ *   Request reset (sign-in screen)
+ *     ✓ Calls supabase.auth.resetPasswordForEmail with correct email (no redirectTo)
  *     ✓ isLoading / resetLoading always resets (no infinite spinner)
  *     ✓ Empty or invalid email rejected before Supabase is called
  *     ✓ Supabase error surfaces to UI
@@ -34,14 +33,14 @@
  *     ✓ Successful update navigates to /(tabs)/ (user is already authenticated)
  *
  *   OTP flow (verify-otp.tsx) — preferred path, immune to email pre-fetch
- *     ✓ Fewer than 6 digits → validation error, verifyOtp not called
- *     ✓ Exactly 6 digits → verifyOtp called with { email, token, type: 'recovery' }
+ *     ✓ Fewer than 8 digits → validation error, verifyOtp not called
+ *     ✓ Exactly 8 digits → verifyOtp called with { email, token, type: 'recovery' }
  *     ✓ Non-digit characters stripped from OTP input
- *     ✓ OTP input capped at 6 digits
+ *     ✓ OTP input capped at 8 digits
  *     ✓ Successful verifyOtp navigates to /(auth)/reset-password
  *     ✓ isLoading resets after success, error, network throw, and timeout
  *     ✓ Wrong/expired code → error shown, navigation skipped
- *     ✓ Resend calls resetPasswordForEmail and clears the OTP field
+ *     ✓ Resend calls resetPasswordForEmail (no redirectTo) and clears the OTP field
  *     ✓ Resend loading resets after success and error
  *     ✓ Full OTP journey: sign-in → email sent → verify-otp → code entered → reset-password → tabs
  */
@@ -123,27 +122,24 @@ describe('UAT: Request password reset — validation (sign-in screen)', () => {
 });
 
 describe('UAT: Request password reset — Supabase call', () => {
-  it('calls resetPasswordForEmail with the user email', async () => {
+  it('calls resetPasswordForEmail with the user email and no redirectTo', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
-    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
-      'user@example.com',
-      { redirectTo: 'caloriepal://reset-password' }
-    );
+    await mockResetPasswordForEmail('user@example.com');
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('user@example.com');
   });
 
-  it('redirectTo is always caloriepal://reset-password so the email opens the app', async () => {
+  it('resetPasswordForEmail is called without a redirectTo option', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+    await mockResetPasswordForEmail('user@example.com');
     const [[, opts]] = mockResetPasswordForEmail.mock.calls;
-    expect(opts?.redirectTo).toBe('caloriepal://reset-password');
+    expect(opts).toBeUndefined();
   });
 
   it('resetLoading resets to false after a successful send', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
     let loading = true;
     try {
-      await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+      await mockResetPasswordForEmail('user@example.com');
     } finally {
       loading = false;
     }
@@ -154,9 +150,7 @@ describe('UAT: Request password reset — Supabase call', () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'User not found' } });
     let loading = true;
     try {
-      const { error } = await mockResetPasswordForEmail('unknown@example.com', {
-        redirectTo: 'caloriepal://reset-password',
-      });
+      const { error } = await mockResetPasswordForEmail('unknown@example.com');
       if (error) throw error;
     } catch {
       // error surfaced to UI
@@ -170,7 +164,7 @@ describe('UAT: Request password reset — Supabase call', () => {
     mockResetPasswordForEmail.mockRejectedValueOnce(new Error('Network error'));
     let loading = true;
     try {
-      await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+      await mockResetPasswordForEmail('user@example.com');
     } catch {
       // surfaced
     } finally {
@@ -561,9 +555,7 @@ describe('UAT: Full reset journey — request → link → set new password → 
   it('PKCE flow: email sent → ?code= link → exchangeCodeForSession → password updated → tabs', async () => {
     // Step 1: User requests reset
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    const { error: sendError } = await mockResetPasswordForEmail('user@example.com', {
-      redirectTo: 'caloriepal://reset-password',
-    });
+    const { error: sendError } = await mockResetPasswordForEmail('user@example.com');
     expect(sendError).toBeNull();
 
     // Step 2: Supabase v2 link format delivers ?code= (PKCE)
@@ -601,7 +593,7 @@ describe('UAT: Full reset journey — request → link → set new password → 
   it('implicit flow: email sent → #access_token= link → setSession → password updated → tabs', async () => {
     // Step 1: User requests reset
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+    await mockResetPasswordForEmail('user@example.com');
 
     // Step 2: Legacy link format delivers #access_token= fragment
     const navigate = jest.fn();
@@ -700,41 +692,41 @@ describe('UAT: OTP flow — verify-otp screen', () => {
 
   // ── validation ──────────────────────────────────────────────────────────────
 
-  it('fewer than 6 digits → validation error, verifyOtp not called', async () => {
+  it('fewer than 8 digits → validation error, verifyOtp not called', async () => {
     let error = '';
-    const otp = '123'; // only 3 digits
-    if (otp.length !== 6) {
-      error = 'Please enter all 6 digits.';
+    const otp = '1234'; // only 4 digits
+    if (otp.length !== 8) {
+      error = 'Please enter all 8 digits.';
       // verifyOtp never called
     }
     expect(error).toBeTruthy();
     expect(mockVerifyOtp).not.toHaveBeenCalled();
   });
 
-  it('exactly 6 digits → verifyOtp is called', async () => {
+  it('exactly 8 digits → verifyOtp is called', async () => {
     mockVerifyOtp.mockResolvedValueOnce({ error: null });
-    const otp = '123456';
-    if (otp.length === 6) {
+    const otp = '12345678';
+    if (otp.length === 8) {
       await mockVerifyOtp({ email: 'user@example.com', token: otp, type: 'recovery' });
     }
     expect(mockVerifyOtp).toHaveBeenCalledWith({
       email: 'user@example.com',
-      token: '123456',
+      token: '12345678',
       type: 'recovery',
     });
   });
 
   it('OTP input filters non-digit characters', () => {
-    const raw = '1a2b3c456';
-    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 6);
-    expect(filtered).toBe('123456');
+    const raw = '1a2b3c4d5678';
+    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 8);
+    expect(filtered).toBe('12345678');
   });
 
-  it('OTP input is capped at 6 digits', () => {
+  it('OTP input is capped at 8 digits', () => {
     const raw = '1234567890';
-    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 6);
-    expect(filtered).toBe('123456');
-    expect(filtered.length).toBe(6);
+    const filtered = raw.replace(/[^0-9]/g, '').slice(0, 8);
+    expect(filtered).toBe('12345678');
+    expect(filtered.length).toBe(8);
   });
 
   // ── success path ─────────────────────────────────────────────────────────────
@@ -743,7 +735,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     const navigate = jest.fn();
     mockVerifyOtp.mockResolvedValueOnce({ error: null });
     const { error } = await mockVerifyOtp({
-      email: 'user@example.com', token: '123456', type: 'recovery',
+      email: 'user@example.com', token: '12345678', type: 'recovery',
     });
     if (!error) navigate('/(auth)/reset-password');
     expect(navigate).toHaveBeenCalledWith('/(auth)/reset-password');
@@ -754,7 +746,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     let loading = true;
     try {
       const { error } = await mockVerifyOtp({
-        email: 'user@example.com', token: '123456', type: 'recovery',
+        email: 'user@example.com', token: '12345678', type: 'recovery',
       });
       if (error) throw error;
     } finally {
@@ -771,7 +763,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     let errorMsg = '';
     try {
       const { error } = await mockVerifyOtp({
-        email: 'user@example.com', token: '000000', type: 'recovery',
+        email: 'user@example.com', token: '00000000', type: 'recovery',
       });
       if (error) throw error;
       navigate('/(auth)/reset-password');
@@ -790,7 +782,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     let loading = true;
     try {
       const { error } = await mockVerifyOtp({
-        email: 'user@example.com', token: '000000', type: 'recovery',
+        email: 'user@example.com', token: '00000000', type: 'recovery',
       });
       if (error) throw error;
     } catch {
@@ -805,7 +797,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     mockVerifyOtp.mockRejectedValueOnce(new Error('Network error'));
     let loading = true;
     try {
-      await mockVerifyOtp({ email: 'user@example.com', token: '123456', type: 'recovery' });
+      await mockVerifyOtp({ email: 'user@example.com', token: '12345678', type: 'recovery' });
     } catch {
       // shown to user
     } finally {
@@ -834,17 +826,16 @@ describe('UAT: OTP flow — verify-otp screen', () => {
 
   // ── resend ───────────────────────────────────────────────────────────────────
 
-  it('resend calls resetPasswordForEmail with the same email', async () => {
+  it('resend calls resetPasswordForEmail with the same email and no redirectTo', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
-    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
-      'user@example.com',
-      { redirectTo: 'caloriepal://reset-password' },
-    );
+    await mockResetPasswordForEmail('user@example.com');
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('user@example.com');
+    const [[, opts]] = mockResetPasswordForEmail.mock.calls;
+    expect(opts).toBeUndefined();
   });
 
   it('resend resets the otp field to empty', () => {
-    let otp = '123';
+    let otp = '12345678';
     // handleResend clears the otp before re-sending
     otp = '';
     expect(otp).toBe('');
@@ -854,9 +845,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
     let resending = true;
     try {
-      const { error } = await mockResetPasswordForEmail('user@example.com', {
-        redirectTo: 'caloriepal://reset-password',
-      });
+      const { error } = await mockResetPasswordForEmail('user@example.com');
       if (error) throw error;
     } finally {
       resending = false;
@@ -868,9 +857,7 @@ describe('UAT: OTP flow — verify-otp screen', () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'Rate limit exceeded' } });
     let resending = true;
     try {
-      const { error } = await mockResetPasswordForEmail('user@example.com', {
-        redirectTo: 'caloriepal://reset-password',
-      });
+      const { error } = await mockResetPasswordForEmail('user@example.com');
       if (error) throw error;
     } catch {
       // shown to user
@@ -889,9 +876,7 @@ describe('UAT: Full OTP journey — sign-in → send email → enter OTP → set
   it('complete OTP path: email sent → navigate to verify-otp → code verified → reset-password → tabs', async () => {
     // Step 1: User enters email, taps "Forgot Password"
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    const { error: sendError } = await mockResetPasswordForEmail('user@example.com', {
-      redirectTo: 'caloriepal://reset-password',
-    });
+    const { error: sendError } = await mockResetPasswordForEmail('user@example.com');
     expect(sendError).toBeNull();
 
     // Step 2: App navigates to verify-otp (instead of showing a dead-end alert)
@@ -902,10 +887,10 @@ describe('UAT: Full OTP journey — sign-in → send email → enter OTP → set
       params: { email: 'user@example.com' },
     });
 
-    // Step 3: User types the 6-digit code
+    // Step 3: User types the 8-digit code
     mockVerifyOtp.mockResolvedValueOnce({ error: null });
     const { error: otpError } = await mockVerifyOtp({
-      email: 'user@example.com', token: '847392', type: 'recovery',
+      email: 'user@example.com', token: '84739201', type: 'recovery',
     });
     expect(otpError).toBeNull();
     navigate('/(auth)/reset-password');
@@ -931,7 +916,7 @@ describe('UAT: Full OTP journey — sign-in → send email → enter OTP → set
     mockVerifyOtp.mockResolvedValueOnce({ error: { message: 'Token has expired or is invalid' } });
     try {
       const { error } = await mockVerifyOtp({
-        email: 'user@example.com', token: '000000', type: 'recovery',
+        email: 'user@example.com', token: '00000000', type: 'recovery',
       });
       if (error) throw error;
       navigate('/(auth)/reset-password');

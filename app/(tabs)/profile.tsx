@@ -402,35 +402,6 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const handleChangePassword = async () => {
-    const userEmail = session?.user.email;
-    if (!userEmail) return;
-    Alert.alert(
-      'Change Password',
-      `We'll send a password reset link to ${userEmail}. Check your inbox to set a new password.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send Reset Email',
-          onPress: async () => {
-            try {
-              const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
-                redirectTo: 'caloriepal://reset-password',
-              });
-              if (error) throw error;
-              Alert.alert(
-                'Email Sent ✉️',
-                `A password reset link has been sent to ${userEmail}. Open the link in the email to set a new password — it expires in 1 hour.`
-              );
-            } catch (e: any) {
-              Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const handleDeleteAccount = () => {
     Alert.alert(
       '⚠️ Delete Account',
@@ -1011,14 +982,6 @@ export default function ProfileScreen() {
             <Text style={styles.menuText}>📤 Export Data as CSV</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
           </TouchableOpacity>
-
-          {!isGuest && (
-            <TouchableOpacity style={styles.menuItem} onPress={handleChangePassword}>
-              <Ionicons name="lock-closed-outline" size={20} color={Colors.textLight} />
-              <Text style={styles.menuText}>🔒 Change Password</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
 
           {isGuest ? (
             <Button

@@ -151,7 +151,7 @@ export default function ResetPasswordScreen() {
             <View style={styles.tipBox}>
               <Ionicons name="information-circle-outline" size={16} color={Colors.textLight} />
               <Text style={styles.tipText}>
-                This link expires after 1 hour. If it has expired, request a new one from the sign-in screen.
+                Your reset code expires after 1 hour. If it has expired, request a new one from the sign-in screen.
               </Text>
             </View>
           </Animated.View>

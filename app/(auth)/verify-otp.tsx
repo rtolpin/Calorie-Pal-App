@@ -18,7 +18,7 @@ import { Button } from '../../components/ui/Button';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/Colors';
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 8;
 
 export default function VerifyOTPScreen() {
   const { email } = useLocalSearchParams<{ email: string }>();
@@ -46,7 +46,7 @@ export default function VerifyOTPScreen() {
 
   const handleVerify = async () => {
     if (otp.length !== OTP_LENGTH) {
-      setError('Please enter all 6 digits.');
+      setError('Please enter all 8 digits.');
       return;
     }
     setLoading(true);
@@ -125,7 +125,7 @@ export default function VerifyOTPScreen() {
 
             <Text style={styles.title}>Check Your Email</Text>
             <Text style={styles.subtitle}>
-              We sent a 6-digit reset code to{'\n'}
+              We sent an 8-digit reset code to{'\n'}
               <Text style={styles.emailHighlight}>{email}</Text>
             </Text>
 
@@ -197,7 +197,7 @@ export default function VerifyOTPScreen() {
             <View style={styles.tipBox}>
               <Ionicons name="information-circle-outline" size={16} color={Colors.textLight} />
               <Text style={styles.tipText}>
-                The code expires after 1 hour. Check your spam folder if it doesn't arrive.
+                The 8-digit code expires after 1 hour. Check your spam folder if it doesn't arrive.
               </Text>
             </View>
           </Animated.View>
