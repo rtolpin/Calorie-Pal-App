@@ -58,21 +58,15 @@ export default function VerifyOTPScreen() {
           15000,
         ),
       );
-      const verifyResult = await Promise.race([
+      const { error: verifyError } = await Promise.race([
         supabase.auth.verifyOtp({ email, token: otp, type: 'recovery' }),
         timeout,
       ]);
-      if (verifyResult.error) throw verifyResult.error;
-      // Explicitly re-set the recovery session so reset-password.tsx has a
-      // guaranteed fresh token. onAuthStateChange skips PASSWORD_RECOVERY so
-      // the session only lives in the Supabase client, not the auth store.
-      const recoverySession = verifyResult.data?.session;
-      if (recoverySession) {
-        await supabase.auth.setSession({
-          access_token: recoverySession.access_token,
-          refresh_token: recoverySession.refresh_token,
-        });
-      }
+      if (verifyError) throw verifyError;
+      // verifyOtp sets the recovery session in the Supabase client.
+      // onAuthStateChange skips PASSWORD_RECOVERY so authStore is not
+      // updated here — that prevents the session conflict that caused
+      // updateUser to hang on the next screen.
       router.replace('/(auth)/reset-password');
     } catch (e: any) {
       const msg = (e?.message ?? '').toLowerCase();

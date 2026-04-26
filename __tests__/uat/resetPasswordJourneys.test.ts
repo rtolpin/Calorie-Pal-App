@@ -4,7 +4,7 @@
  * Verifies the full password-reset journey end-to-end:
  *
  *   Request reset (sign-in screen)
- *     ✓ Calls supabase.auth.resetPasswordForEmail with correct email (no redirectTo)
+ *     ✓ Calls supabase.auth.resetPasswordForEmail with correct email and redirectTo
  *     ✓ isLoading / resetLoading always resets (no infinite spinner)
  *     ✓ Empty or invalid email rejected before Supabase is called
  *     ✓ Supabase error surfaces to UI
@@ -40,7 +40,7 @@
  *     ✓ Successful verifyOtp navigates to /(auth)/reset-password
  *     ✓ isLoading resets after success, error, network throw, and timeout
  *     ✓ Wrong/expired code → error shown, navigation skipped
- *     ✓ Resend calls resetPasswordForEmail (no redirectTo) and clears the OTP field
+ *     ✓ Resend calls resetPasswordForEmail with redirectTo and clears the OTP field
  *     ✓ Resend loading resets after success and error
  *     ✓ Full OTP journey: sign-in → email sent → verify-otp → code entered → reset-password → tabs
  */
@@ -122,17 +122,20 @@ describe('UAT: Request password reset — validation (sign-in screen)', () => {
 });
 
 describe('UAT: Request password reset — Supabase call', () => {
-  it('calls resetPasswordForEmail with the user email and no redirectTo', async () => {
+  it('calls resetPasswordForEmail with the user email and redirectTo', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com');
-    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('user@example.com');
+    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
+      'user@example.com',
+      { redirectTo: 'caloriepal://reset-password' },
+    );
   });
 
-  it('resetPasswordForEmail is called without a redirectTo option', async () => {
+  it('redirectTo is always caloriepal://reset-password so Supabase generates the token correctly', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com');
+    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
     const [[, opts]] = mockResetPasswordForEmail.mock.calls;
-    expect(opts).toBeUndefined();
+    expect(opts?.redirectTo).toBe('caloriepal://reset-password');
   });
 
   it('resetLoading resets to false after a successful send', async () => {
@@ -826,12 +829,15 @@ describe('UAT: OTP flow — verify-otp screen', () => {
 
   // ── resend ───────────────────────────────────────────────────────────────────
 
-  it('resend calls resetPasswordForEmail with the same email and no redirectTo', async () => {
+  it('resend calls resetPasswordForEmail with the same email and redirectTo', async () => {
     mockResetPasswordForEmail.mockResolvedValueOnce({ error: null });
-    await mockResetPasswordForEmail('user@example.com');
-    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('user@example.com');
+    await mockResetPasswordForEmail('user@example.com', { redirectTo: 'caloriepal://reset-password' });
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
+      'user@example.com',
+      { redirectTo: 'caloriepal://reset-password' },
+    );
     const [[, opts]] = mockResetPasswordForEmail.mock.calls;
-    expect(opts).toBeUndefined();
+    expect(opts?.redirectTo).toBe('caloriepal://reset-password');
   });
 
   it('resend resets the otp field to empty', () => {
