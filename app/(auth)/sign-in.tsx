@@ -60,10 +60,14 @@ export default function SignInScreen() {
     }
     setResetLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmed);
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: 'caloriepal://reset-password',
+      });
       if (error) throw error;
-      // Navigate to OTP entry screen — the user types the 6-digit code from the email.
-      // This avoids the link-expiry / email-preload issues that plagued the link-only flow.
+      // Navigate to OTP entry — user types the 8-digit code from the email.
+      // redirectTo is required for Supabase to generate the token correctly.
+      // The email template shows only {{ .Token }}, so there is no link for
+      // email scanners to pre-fetch.
       router.push({ pathname: '/(auth)/verify-otp', params: { email: trimmed } });
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
