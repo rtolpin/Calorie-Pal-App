@@ -89,9 +89,7 @@ export default function VerifyOTPScreen() {
     setError('');
     setOtp('');
     try {
-      const { error: resendError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'caloriepal://reset-password',
-      });
+      const { error: resendError } = await supabase.auth.resetPasswordForEmail(email);
       if (resendError) throw resendError;
       Alert.alert('Code Resent ✉️', `A new code has been sent to ${email}.`);
     } catch (e: any) {

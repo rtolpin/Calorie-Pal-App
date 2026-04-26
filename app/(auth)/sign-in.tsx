@@ -60,9 +60,7 @@ export default function SignInScreen() {
     }
     setResetLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: 'caloriepal://reset-password',
-      });
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed);
       if (error) throw error;
       // Navigate to OTP entry screen — the user types the 6-digit code from the email.
       // This avoids the link-expiry / email-preload issues that plagued the link-only flow.
