@@ -1,6 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../store/authStore';
 import { Colors } from '../../constants/Colors';
 
 function TabIcon({
@@ -25,6 +26,16 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  const { session, isGuest, initialized } = useAuthStore();
+
+  // Declarative guard: as soon as session is cleared (sign out) or the user
+  // was never authenticated, redirect to the auth flow. Using a Redirect here
+  // is reliable in Expo Router 6 where router.replace() across route groups
+  // can be inconsistent from within nested navigators.
+  if (initialized && !session && !isGuest) {
+    return <Redirect href="/(auth)/welcome" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

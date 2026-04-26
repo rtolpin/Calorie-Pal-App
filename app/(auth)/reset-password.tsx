@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,13 +15,18 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { supabase } from '../../lib/supabase';
+import { useAuthStore } from '../../store/authStore';
 import { Colors } from '../../constants/Colors';
 
+type StatusBanner = { type: 'success' | 'error'; message: string } | null;
+
 export default function ResetPasswordScreen() {
+  const { syncSession } = useAuthStore();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ new?: string; confirm?: string }>({});
+  const [status, setStatus] = useState<StatusBanner>(null);
 
   const validate = (): boolean => {
     const errs: { new?: string; confirm?: string } = {};
@@ -42,47 +46,48 @@ export default function ResetPasswordScreen() {
 
   const handleReset = async () => {
     if (!validate()) return;
+    setStatus(null);
     setLoading(true);
     try {
-      // Fast-fail: verify the recovery session exists before hitting the network.
-      // Without this check, updateUser hangs for the full timeout duration when
-      // the session is missing (e.g. PKCE code was never exchanged, or the link
-      // was pre-fetched by an email-security scanner and the code was consumed).
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        Alert.alert(
-          'Link Expired',
-          'Your password reset session has expired or the link was already used. Please request a new one from the sign-in screen.',
-          [{ text: 'Back to Sign In', onPress: () => router.replace('/(auth)/sign-in') }],
-        );
+        setStatus({
+          type: 'error',
+          message: 'Your reset session has expired or was already used. Please request a new code from the sign-in screen.',
+        });
         return;
       }
 
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
       );
-      const { error } = await Promise.race([
+      const { data, error } = await Promise.race([
         supabase.auth.updateUser({ password: newPassword }),
         timeout,
       ]);
+
+      // Per Supabase docs, success = error is null AND data.user is populated.
+      // Checking both guards against any unexpected partial-success response.
       if (error) throw error;
-      // updateUser with a recovery token creates a valid authenticated session —
-      // navigate directly to the app instead of asking the user to sign in again.
-      Alert.alert(
-        'Password Updated ✅',
-        'Your password has been changed successfully.',
-        [{ text: 'Continue', onPress: () => router.replace('/(tabs)/') }]
-      );
+      if (!data?.user) throw new Error('Password could not be updated. Please try again.');
+
+      // Immediately sync the new authenticated session into the store so the
+      // tabs guard sees a valid session the moment the user taps "Continue".
+      await syncSession();
+
+      setStatus({ type: 'success', message: 'Your password has been changed successfully.' });
     } catch (e: any) {
       const msg = e?.message ?? '';
       if (msg.toLowerCase().includes('expired') || msg.toLowerCase().includes('invalid jwt')) {
-        Alert.alert(
-          'Link Expired',
-          'This password reset link has expired. Please request a new one from the sign-in screen.',
-          [{ text: 'Back to Sign In', onPress: () => router.replace('/(auth)/sign-in') }]
-        );
+        setStatus({
+          type: 'error',
+          message: 'This reset session has expired. Please request a new code from the sign-in screen.',
+        });
       } else {
-        Alert.alert('Reset Failed', msg || 'Failed to update password. Please try again.');
+        setStatus({
+          type: 'error',
+          message: msg || 'Failed to update password. Please try again.',
+        });
       }
     } finally {
       setLoading(false);
@@ -144,9 +149,39 @@ export default function ResetPasswordScreen() {
               gradient
               size="lg"
               loading={loading}
+              disabled={status?.type === 'success'}
               onPress={handleReset}
               style={styles.btn}
             />
+
+            {status && (
+              <View style={[styles.banner, status.type === 'success' ? styles.bannerSuccess : styles.bannerError]}>
+                <Ionicons
+                  name={status.type === 'success' ? 'checkmark-circle' : 'close-circle'}
+                  size={20}
+                  color={status.type === 'success' ? Colors.success : Colors.error}
+                />
+                <Text style={[styles.bannerText, status.type === 'success' ? styles.bannerTextSuccess : styles.bannerTextError]}>
+                  {status.message}
+                </Text>
+              </View>
+            )}
+
+            {status?.type === 'success' && (
+              <Button
+                title="Continue to App →"
+                gradient
+                size="lg"
+                onPress={() => router.replace('/(tabs)/')}
+                style={styles.btn}
+              />
+            )}
+
+            {status?.type === 'error' && (
+              <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')} style={styles.backToSignIn}>
+                <Text style={styles.backToSignInText}>← Back to Sign In</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.tipBox}>
               <Ionicons name="information-circle-outline" size={16} color={Colors.textLight} />
@@ -183,6 +218,37 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   btn: { marginTop: 8 },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+  },
+  bannerSuccess: {
+    backgroundColor: Colors.success + '15',
+    borderColor: Colors.success,
+  },
+  bannerError: {
+    backgroundColor: Colors.error + '15',
+    borderColor: Colors.error,
+  },
+  bannerText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 14,
+    flex: 1,
+    lineHeight: 20,
+  },
+  bannerTextSuccess: { color: Colors.success },
+  bannerTextError: { color: Colors.error },
+  backToSignIn: { alignItems: 'center', marginTop: 12 },
+  backToSignInText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: Colors.primary,
+  },
   tipBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',

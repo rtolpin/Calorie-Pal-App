@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -387,18 +388,21 @@ export default function ProfileScreen() {
     await Share.share({ message: header + rows, title: 'CaloriePal Food Journal' });
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    const doSignOut = () => {
+      clearLogs();
+      signOut();
+    };
+
+    if (Platform.OS === 'web') {
+      // Alert.alert callbacks are unreliable on web — use the browser confirm dialog.
+      if (window.confirm('Are you sure you want to sign out?')) doSignOut();
+      return;
+    }
+
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          clearLogs();
-          await signOut();
-          router.replace('/(auth)/welcome');
-        },
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: doSignOut },
     ]);
   };
 

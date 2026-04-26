@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -60,8 +61,10 @@ export default function SignInScreen() {
     }
     setResetLoading(true);
     try {
+      // Linking.createURL generates the correct scheme per platform:
+      // mobile → caloriepal://reset-password  |  web → http://localhost:8081/reset-password
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: 'caloriepal://reset-password',
+        redirectTo: Linking.createURL('reset-password'),
       });
       if (error) throw error;
       // Navigate to OTP entry — user types the 8-digit code from the email.

@@ -15,8 +15,17 @@ interface AuthState {
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
   setProfile: (profile: UserProfile) => void;
+  syncSession: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
 }
+
+// Incremented every time SIGNED_OUT fires. Each async profile fetch captures
+// the generation at start; if it differs on completion the fetch is stale
+// (user signed out while it was in flight) and is discarded.
+// This avoids calling getSession() inside onAuthStateChange (which can
+// deadlock Supabase's internal session lock) and avoids checking
+// get().session (which is null during the recovery flow, breaking sign-in).
+let _fetchGeneration = 0;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
@@ -46,22 +55,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       supabase.auth.onAuthStateChange(async (event, session) => {
-        // PASSWORD_RECOVERY is owned by reset-password.tsx. Storing the
-        // temporary recovery session here causes updateUser to fail because
-        // the store update triggers re-renders that can tear down the session.
-        if (event === 'PASSWORD_RECOVERY') return;
-
-        if (session) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-
-          set({ session, profile: profile as UserProfile, isGuest: false });
-        } else {
-          set({ session: null, profile: null });
+        if (event === 'PASSWORD_RECOVERY') {
+          // Owned by reset-password.tsx. Do not update the store with the
+          // temporary recovery session — it would trigger the tabs guard and
+          // bounce the user to the welcome screen before they set a password.
+          return;
         }
+
+        if (!session) {
+          // SIGNED_OUT: invalidate any profile fetches that are in flight so
+          // they don't restore the session after the user has logged out.
+          _fetchGeneration++;
+          set({ session: null, profile: null });
+          return;
+        }
+
+        // SIGNED_IN / USER_UPDATED / TOKEN_REFRESHED etc.
+        const generation = _fetchGeneration;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        // Discard if a SIGNED_OUT fired while the fetch was in flight.
+        if (generation !== _fetchGeneration) return;
+
+        set({ session, profile: profile as UserProfile, isGuest: false });
       });
     } catch {
       set({ isLoading: false, initialized: true });
@@ -84,7 +104,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { error: signUpError } = await supabase.auth.signUp({ email, password });
       if (signUpError) throw signUpError;
       // Immediately sign in — works when email confirmation is disabled in Supabase.
-      // If confirmation is required, this throws so the UI can prompt the user to check email.
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
     } finally {
@@ -93,8 +112,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    // Clear local state first so the UI navigates away immediately,
+    // regardless of how long the server-side invalidation takes.
     set({ session: null, profile: null, isGuest: false });
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Local state is already cleared; server invalidation is best-effort.
+    }
   },
 
   continueAsGuest: () => {
@@ -102,6 +127,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setProfile: (profile) => set({ profile }),
+
+  // Called after a successful password reset to immediately sync the new
+  // authenticated session into the store, without waiting for onAuthStateChange
+  // to complete its async profile fetch. This ensures the tabs guard sees a
+  // valid session the moment the user taps "Continue to App".
+  syncSession: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+    set({ session, profile: profile as UserProfile, isGuest: false });
+  },
 
   updateProfile: async (updates) => {
     const { session } = get();

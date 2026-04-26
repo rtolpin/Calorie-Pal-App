@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -27,7 +28,15 @@ export default function VerifyOTPScreen() {
   const [loading, setLoading]   = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError]       = useState('');
+  const [cooldown, setCooldown] = useState(0);
   const inputRef = useRef<TextInput>(null);
+
+  // Tick the resend cooldown down every second.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   useEffect(() => {
     if (!email) {
@@ -93,9 +102,10 @@ export default function VerifyOTPScreen() {
     setOtp('');
     try {
       const { error: resendError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'caloriepal://reset-password',
+        redirectTo: Linking.createURL('reset-password'),
       });
       if (resendError) throw resendError;
+      setCooldown(60);
       Alert.alert('Code Resent ✉️', `A new code has been sent to ${email}.`);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not resend code. Please try again.');
@@ -134,12 +144,12 @@ export default function VerifyOTPScreen() {
               <Text style={styles.emailHighlight}>{email}</Text>
             </Text>
 
-            {/* 6 visual digit boxes — tap to open keyboard */}
+            {/* 8 visual digit boxes — tap to open keyboard */}
             <TouchableOpacity
               style={styles.otpRow}
               onPress={() => inputRef.current?.focus()}
               activeOpacity={1}
-              accessibilityLabel="Enter the 6-digit code"
+              accessibilityLabel="Enter the 8-digit code"
               accessibilityRole="button"
               testID="otp-row"
             >
@@ -168,7 +178,7 @@ export default function VerifyOTPScreen() {
               maxLength={OTP_LENGTH}
               caretHidden
               testID="otp-input"
-              accessibilityLabel="6-digit code input"
+              accessibilityLabel="8-digit code input"
             />
 
             {error ? (
@@ -188,13 +198,13 @@ export default function VerifyOTPScreen() {
               <Text style={styles.resendLabel}>Didn't receive it? </Text>
               <TouchableOpacity
                 onPress={handleResend}
-                disabled={resending}
+                disabled={resending || cooldown > 0}
                 accessibilityRole="button"
                 accessibilityLabel="Resend code"
                 testID="resend-btn"
               >
-                <Text style={styles.resendLink}>
-                  {resending ? 'Sending…' : 'Resend Code'}
+                <Text style={[styles.resendLink, (cooldown > 0) && styles.resendLinkDisabled]}>
+                  {resending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -301,6 +311,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito_700Bold',
     fontSize: 14,
     color: Colors.primary,
+  },
+  resendLinkDisabled: {
+    color: Colors.textMuted,
   },
   tipBox: {
     flexDirection: 'row',
