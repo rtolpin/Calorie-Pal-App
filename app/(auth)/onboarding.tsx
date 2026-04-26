@@ -226,6 +226,8 @@ export default function OnboardingScreen() {
               keyboardType="numeric"
               returnKeyType="next"
               onSubmitEditing={() => weightRef.current?.focus()}
+              autoCorrect={false}
+              autoComplete="off"
             />
             <View style={styles.weightRow}>
               <View style={{ flex: 1 }}>
@@ -242,6 +244,8 @@ export default function OnboardingScreen() {
                       ? heightCmRef.current?.focus()
                       : heightFtRef.current?.focus()
                   }
+                  autoCorrect={false}
+                  autoComplete="off"
                 />
               </View>
               <View style={styles.unitToggle}>
@@ -270,6 +274,8 @@ export default function OnboardingScreen() {
                     keyboardType="numeric"
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
+                    autoCorrect={false}
+                    autoComplete="off"
                   />
                 ) : (
                   <View style={styles.heightFtRow}>
@@ -283,6 +289,8 @@ export default function OnboardingScreen() {
                         keyboardType="numeric"
                         returnKeyType="next"
                         onSubmitEditing={() => heightInRef.current?.focus()}
+                        autoCorrect={false}
+                        autoComplete="off"
                       />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -295,6 +303,8 @@ export default function OnboardingScreen() {
                         keyboardType="numeric"
                         returnKeyType="done"
                         onSubmitEditing={Keyboard.dismiss}
+                        autoCorrect={false}
+                        autoComplete="off"
                       />
                     </View>
                   </View>
