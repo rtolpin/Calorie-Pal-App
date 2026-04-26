@@ -15,13 +15,11 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { supabase } from '../../lib/supabase';
-import { useAuthStore } from '../../store/authStore';
 import { Colors } from '../../constants/Colors';
 
 type StatusBanner = { type: 'success' | 'error'; message: string } | null;
 
 export default function ResetPasswordScreen() {
-  const { syncSession } = useAuthStore();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,39 +47,28 @@ export default function ResetPasswordScreen() {
     setStatus(null);
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setStatus({
-          type: 'error',
-          message: 'Your reset session has expired or was already used. Please request a new code from the sign-in screen.',
-        });
-        return;
-      }
+      // Call updateUser directly — no prior getSession() call.
+      // getSession() + updateUser() both acquire the same internal Supabase lock.
+      // Calling getSession() first releases the lock briefly, letting the
+      // autoRefreshToken background task grab it. Recovery tokens cannot be
+      // refreshed (they are one-time-use), so the refresh hangs and updateUser()
+      // is stuck waiting for the lock, causing the 15-second timeout.
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), 15000)
-      );
-      const { data, error } = await Promise.race([
-        supabase.auth.updateUser({ password: newPassword }),
-        timeout,
-      ]);
-
-      // Per Supabase docs, success = error is null AND data.user is populated.
-      // Checking both guards against any unexpected partial-success response.
       if (error) throw error;
-      if (!data?.user) throw new Error('Password could not be updated. Please try again.');
-
-      // Immediately sync the new authenticated session into the store so the
-      // tabs guard sees a valid session the moment the user taps "Continue".
-      await syncSession();
 
       setStatus({ type: 'success', message: 'Your password has been changed successfully.' });
     } catch (e: any) {
       const msg = e?.message ?? '';
-      if (msg.toLowerCase().includes('expired') || msg.toLowerCase().includes('invalid jwt')) {
+      if (
+        msg.toLowerCase().includes('session') ||
+        msg.toLowerCase().includes('expired') ||
+        msg.toLowerCase().includes('invalid jwt') ||
+        msg.toLowerCase().includes('missing')
+      ) {
         setStatus({
           type: 'error',
-          message: 'This reset session has expired. Please request a new code from the sign-in screen.',
+          message: 'Your reset session has expired or was already used. Please request a new code from the sign-in screen.',
         });
       } else {
         setStatus({

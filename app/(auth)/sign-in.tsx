@@ -26,6 +26,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [resetSent, setResetSent] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const validate = (): boolean => {
@@ -56,22 +57,27 @@ export default function SignInScreen() {
   const handleForgotPassword = async () => {
     const trimmed = email.trim();
     if (!trimmed || !/\S+@\S+\.\S+/.test(trimmed)) {
-      Alert.alert('Enter Your Email', 'Please enter your email address above, then tap Forgot Password.');
+      // Show inline under the email field — works correctly on web and mobile.
+      // Alert.alert on web renders a browser popup which is inconsistent.
+      setErrors((prev) => ({ ...prev, email: 'Please enter a valid email to reset your password.' }));
       return;
     }
+    setErrors((prev) => ({ ...prev, email: undefined }));
     setResetLoading(true);
+    setResetSent(null);
     try {
-      // Linking.createURL generates the correct scheme per platform:
-      // mobile → caloriepal://reset-password  |  web → http://localhost:8081/reset-password
+      // Standard Supabase password reset flow:
+      // 1. resetPasswordForEmail sends a magic link to the user's email
+      // 2. User taps the link → app opens via deep link (caloriepal:// on mobile,
+      //    http://localhost:8081 on web)
+      // 3. _layout.tsx handleAuthDeepLink exchanges the code for a session
+      // 4. App navigates to /(auth)/reset-password
+      // 5. User enters new password → updateUser({ password })
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
         redirectTo: Linking.createURL('reset-password'),
       });
       if (error) throw error;
-      // Navigate to OTP entry — user types the 8-digit code from the email.
-      // redirectTo is required for Supabase to generate the token correctly.
-      // The email template shows only {{ .Token }}, so there is no link for
-      // email scanners to pre-fetch.
-      router.push({ pathname: '/(auth)/verify-otp', params: { email: trimmed } });
+      setResetSent(trimmed);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not send reset email. Please try again.');
     } finally {
@@ -136,6 +142,17 @@ export default function SignInScreen() {
             >
               <Text style={styles.forgot}>{resetLoading ? 'Sending…' : 'Forgot Password?'}</Text>
             </TouchableOpacity>
+
+            {resetSent && (
+              <View style={styles.resetBanner}>
+                <Ionicons name="mail-outline" size={18} color={Colors.success} style={{ marginTop: 2 }} />
+                <Text style={styles.resetBannerText}>
+                  Reset link sent to{' '}
+                  <Text style={styles.resetBannerEmail}>{resetSent}</Text>
+                  .{'\n'}Tap the link in the email to set a new password.
+                </Text>
+              </View>
+            )}
 
             <Button
               title="Sign In"
@@ -206,4 +223,25 @@ const styles = StyleSheet.create({
   createRow: { flexDirection: 'row', justifyContent: 'center' },
   createText: { fontFamily: 'Nunito_400Regular', fontSize: 15, color: Colors.textLight },
   createLink: { fontFamily: 'Nunito_700Bold', fontSize: 15, color: Colors.primary },
+  resetBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.success + '15',
+    borderWidth: 1,
+    borderColor: Colors.success,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+  },
+  resetBannerText: {
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 13,
+    color: Colors.text,
+    flex: 1,
+    lineHeight: 19,
+  },
+  resetBannerEmail: {
+    fontFamily: 'Nunito_700Bold',
+  },
 });

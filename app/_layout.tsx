@@ -17,9 +17,7 @@ import { supabase } from '../lib/supabase';
 SplashScreen.preventAutoHideAsync();
 
 async function handleAuthDeepLink(url: string) {
-  // ── PKCE flow (Supabase v2 default) ──────────────────────────────────────────
-  // Reset-password emails now deliver a one-time ?code= query parameter.
-  // Must call exchangeCodeForSession — setSession will not work for these links.
+  // ── PKCE flow (?code= param) ────────────────────────────────────────────────
   const codeMatch = url.match(/[?&]code=([^&#]+)/);
   if (codeMatch) {
     const code = decodeURIComponent(codeMatch[1]);
@@ -27,8 +25,7 @@ async function handleAuthDeepLink(url: string) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) throw error;
       router.replace('/(auth)/reset-password');
-    } catch (e: any) {
-      // Common failure: email-security scanners pre-fetch the link and consume the code
+    } catch {
       Alert.alert(
         'Link Expired',
         'This password reset link has already been used or has expired. Please request a new one from the sign-in screen.',
@@ -38,8 +35,7 @@ async function handleAuthDeepLink(url: string) {
     return;
   }
 
-  // ── Implicit flow (legacy / explicit project setting) ────────────────────────
-  // Supabase auth links arrive as: caloriepal://[path]#access_token=...&type=...
+  // ── Implicit flow (#access_token= fragment) ─────────────────────────────────
   const fragment = url.split('#')[1];
   if (!fragment) return;
   const params = new URLSearchParams(fragment);
@@ -51,12 +47,11 @@ async function handleAuthDeepLink(url: string) {
     if (type === 'recovery') {
       router.replace('/(auth)/reset-password');
     }
-    // For type === 'signup' (email confirmation), onAuthStateChange handles navigation
   }
 }
 
 export default function RootLayout() {
-  const { initialize } = useAuthStore();
+  const { initialize, initialized } = useAuthStore();
 
   const [fontsLoaded] = useFonts({
     Nunito_400Regular,
@@ -74,13 +69,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  // Wait for initialize() to complete before processing deep links so that
+  // getSession()'s auth lock is released before setSession() / exchangeCodeForSession()
+  // try to acquire it — prevents the Web Locks API "lock stolen" error on web.
   useEffect(() => {
-    // Cold start: app was launched by tapping the confirmation link
+    if (!initialized) return;
     Linking.getInitialURL().then((url) => { if (url) handleAuthDeepLink(url); });
-    // Warm start: app was already running when the link was tapped
     const sub = Linking.addEventListener('url', ({ url }) => handleAuthDeepLink(url));
     return () => sub.remove();
-  }, []);
+  }, [initialized]);
 
   if (!fontsLoaded) return null;
 

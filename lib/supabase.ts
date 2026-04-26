@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // URL polyfill is only needed in React Native, not on web
 if (Platform.OS !== 'web') {
@@ -16,11 +16,22 @@ const getAuthStorage = () => {
   return require('@react-native-async-storage/async-storage').default;
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: getAuthStorage(),
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// Cache the client in globalThis so Expo's hot-module replacement never
+// creates a second instance. Two clients sharing the same lock name compete
+// for the Web Locks API lock and one steals it, causing:
+// "Lock was released because another request stole it"
+declare global {
+  // eslint-disable-next-line no-var
+  var _supabaseClient: SupabaseClient | undefined;
+}
+
+export const supabase: SupabaseClient =
+  globalThis._supabaseClient ??
+  (globalThis._supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: getAuthStorage(),
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  }));
