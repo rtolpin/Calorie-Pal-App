@@ -272,37 +272,30 @@ export default function OnboardingScreen() {
                     onSubmitEditing={Keyboard.dismiss}
                   />
                 ) : (
-                  <View>
-                    <Text style={styles.inputLabel}>Height</Text>
-                    <View style={styles.ftInRow}>
-                      <View style={styles.ftField}>
-                        <TextInput
-                          ref={heightFtRef}
-                          style={styles.ftInput}
-                          value={heightFt}
-                          onChangeText={setHeightFt}
-                          placeholder="5"
-                          keyboardType="numeric"
-                          placeholderTextColor={Colors.textMuted}
-                          returnKeyType="next"
-                          onSubmitEditing={() => heightInRef.current?.focus()}
-                        />
-                        <Text style={styles.ftUnit}>ft</Text>
-                      </View>
-                      <View style={styles.ftField}>
-                        <TextInput
-                          ref={heightInRef}
-                          style={styles.ftInput}
-                          value={heightIn}
-                          onChangeText={setHeightIn}
-                          placeholder="6"
-                          keyboardType="numeric"
-                          placeholderTextColor={Colors.textMuted}
-                          returnKeyType="done"
-                          onSubmitEditing={Keyboard.dismiss}
-                        />
-                        <Text style={styles.ftUnit}>in</Text>
-                      </View>
+                  <View style={styles.heightFtRow}>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        ref={heightFtRef}
+                        label="Height (ft)"
+                        value={heightFt}
+                        onChangeText={setHeightFt}
+                        placeholder="5"
+                        keyboardType="numeric"
+                        returnKeyType="next"
+                        onSubmitEditing={() => heightInRef.current?.focus()}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        ref={heightInRef}
+                        label="(in)"
+                        value={heightIn}
+                        onChangeText={setHeightIn}
+                        placeholder="8"
+                        keyboardType="numeric"
+                        returnKeyType="done"
+                        onSubmitEditing={Keyboard.dismiss}
+                      />
                     </View>
                   </View>
                 )}
@@ -528,32 +521,7 @@ const styles = StyleSheet.create({
   genderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '12' },
   genderBtnText: { fontFamily: 'Nunito_700Bold', fontSize: 13, color: Colors.textLight },
   genderBtnTextActive: { color: Colors.primary },
-  ftInRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  ftField: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 0,   // vertical space comes from minHeight + content
-    backgroundColor: Colors.surface,
-    minHeight: 48,        // Apple-minimum touch target
-  },
-  ftInput: {
-    flex: 1,
-    fontFamily: 'Nunito_400Regular',
-    fontSize: 16,
-    color: Colors.text,
-    paddingVertical: 12,  // gives the text room and expands the touch area
-  },
-  ftUnit: {
-    fontFamily: 'Nunito_700Bold',
-    fontSize: 13,
-    color: Colors.textLight,
-    marginLeft: 4,
-  },
+  heightFtRow: { flexDirection: 'row', gap: 10 },
   weightRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   unitToggle: {
     flexDirection: 'column',
