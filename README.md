@@ -1,4 +1,6 @@
-# CaloriePal 🥗
+# CaloriePal - AI Meal Tracker 🥗
+
+# Now Available on the Apple App Store!! It has an orange icon that has the letters CP.
 
 A colorful, intuitive food and macro/calorie tracking iOS app built with React Native (Expo). Snap a photo of your meal, let AI analyze the nutrition, and track your progress over time.
 
