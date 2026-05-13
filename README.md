@@ -1,6 +1,6 @@
 # CaloriePal - AI Meal Tracker 🥗
 
-# Now Available on the Apple App Store!! (https://apps.apple.com/us/app/caloriepal-ai-meal-tracker/id6763131173)[https://apps.apple.com/us/app/caloriepal-ai-meal-tracker/id6763131173]
+# Now Available on the Apple App Store!! (Calorie Pal - AI Meal Tracker App Link)[https://apps.apple.com/us/app/caloriepal-ai-meal-tracker/id6763131173]
 
 A colorful, intuitive food and macro/calorie tracking iOS app built with React Native (Expo). Snap a photo of your meal, let AI analyze the nutrition, and track your progress over time.
 
